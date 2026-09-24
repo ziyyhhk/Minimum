@@ -6,9 +6,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
-#include <future>
+#include <algorithm>
 
-// Minimal thread pool used by Minimum for parallel batch transform work.
 namespace Minimum {
 
 class ThreadPool {
@@ -97,6 +96,10 @@ private:
 inline ThreadPool& pool() {
     static ThreadPool p;
     return p;
+}
+
+inline void warmPool() {
+    (void)pool().size();
 }
 
 } // namespace Minimum

@@ -87,14 +87,14 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
             auto world = this->convertToWorldSpace(CCPointZero);
             auto win = CCDirector::get()->getWinSize();
             float margin = minCullMargin();
-            if (minPerf() && margin > 60.f) margin = 60.f;
+            if (minPerf() && margin > 40.f) margin = 40.f;
 
             bool off =
                 world.x < -margin || world.y < -margin ||
                 world.x > win.width + margin || world.y > win.height + margin;
 
             m_fields->m_offscreen = off;
-            if (off && m_uParticleCount <= 6)
+            if (off && m_uParticleCount <= 8)
                 return;
         } else {
             m_fields->m_offscreen = false;

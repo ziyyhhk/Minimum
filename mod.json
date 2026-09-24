@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.0",
+	"version": "v2.0.1",
 	"developer": "ziyyhhk",
-	"description": "Advanced live toggle optimization for Geometry Dash. Parallel batch transforms, particle and streak culling, many settings. No restart needed to toggle.",
+	"description": "Advanced live toggle optimization for Geometry Dash. Parallel batch transforms, particle and streak culling, aggressive defaults.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -29,7 +29,7 @@
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Turns on the strongest combination of opts automatically.",
+			"description": "Strongest combination of opts automatically.",
 			"type": "bool",
 			"default": true
 		},
@@ -55,7 +55,7 @@
 			"type": "int",
 			"min": 32,
 			"max": 512,
-			"default": 64
+			"default": 48
 		},
 		"fast-batch-sort": {
 			"name": "Fast Batch Sort",
@@ -75,11 +75,11 @@
 		},
 		"cull-margin": {
 			"name": "Cull Margin",
-			"description": "Screen margin in points before a particle system is treated as offscreen.",
+			"description": "Screen margin before a system is offscreen. Lower = more aggressive.",
 			"type": "float",
 			"min": 20,
 			"max": 400,
-			"default": 100
+			"default": 60
 		},
 		"limit-particles": {
 			"name": "Limit Particle Count",
@@ -93,7 +93,7 @@
 			"type": "int",
 			"min": 4,
 			"max": 200,
-			"default": 28
+			"default": 20
 		},
 		"reduce-emission": {
 			"name": "Reduce Particle Emission",
@@ -103,11 +103,11 @@
 		},
 		"emission-scale": {
 			"name": "Emission Scale",
-			"description": "Spawn rate multiplier. 0.2 = 20 percent of normal.",
+			"description": "Spawn rate multiplier. 0.15 = 15 percent of normal.",
 			"type": "float",
 			"min": 0.05,
 			"max": 1.0,
-			"default": 0.2
+			"default": 0.15
 		},
 		"skip-particle-draw": {
 			"name": "Skip Offscreen Particle Draw",
@@ -143,7 +143,7 @@
 		},
 		"anti-aliasing": {
 			"name": "Anti Aliasing",
-			"description": "MSAA 0 off to 4. Keep at 0 for max FPS while recording.",
+			"description": "MSAA 0 off to 4. Keep at 0 for max FPS.",
 			"type": "int",
 			"min": 0,
 			"max": 4,
