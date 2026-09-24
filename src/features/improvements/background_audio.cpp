@@ -60,15 +60,4 @@ struct BackgroundAudio : Modify<BackgroundAudio, AppDelegate> {
         restoreAudio();
         AppDelegate::applicationWillEnterForeground();
     }
-
-    void applicationWillResignActive() {
-        if (minBgAudio())
-            dimAudio();
-        AppDelegate::applicationWillResignActive();
-    }
-
-    void applicationDidBecomeActive() {
-        restoreAudio();
-        AppDelegate::applicationDidBecomeActive();
-    }
 };

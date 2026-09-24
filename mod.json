@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.3",
+	"version": "v2.0.4",
 	"developer": "ziyyhhk",
-	"description": "Smoother GD: draw divide style render, background volume on tab out, parallel batches, particle and streak opts, fast level enter exit.",
+	"description": "Smoother GD: draw divide render, tab out volume, parallel batches, particle opts, fast level enter exit.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -29,7 +29,7 @@
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Strongest opts including draw divide and particle smooth.",
+			"description": "Strongest opts including draw divide.",
 			"type": "bool",
 			"default": true
 		},
@@ -39,13 +39,13 @@
 		},
 		"draw-divide": {
 			"name": "Draw Divide",
-			"description": "Like mat.draw-divide. Renders at Visual FPS while game logic keeps full speed. Helps GPU lag with high FPS bypass.",
+			"description": "Renders at Visual FPS while logic stays full speed. Big GPU win with high FPS bypass. Visuals may look stepped at very high logic FPS.",
 			"type": "bool",
 			"default": true
 		},
 		"visual-fps": {
 			"name": "Visual FPS",
-			"description": "Target render FPS when Draw Divide is on. Set to your monitor Hz for best results.",
+			"description": "Target render FPS. Use your monitor Hz. Lower = more FPS headroom, more stepped look.",
 			"type": "float",
 			"min": 30,
 			"max": 360,
@@ -57,13 +57,13 @@
 		},
 		"background-volume": {
 			"name": "Lower Volume When Tabbed Out",
-			"description": "Reduces music and SFX when the game loses focus so YouTube and other apps are easier to hear.",
+			"description": "Drops music and SFX when tabbed out so YouTube is clearer.",
 			"type": "bool",
 			"default": true
 		},
 		"background-volume-scale": {
 			"name": "Background Volume Scale",
-			"description": "Volume multiplier when tabbed out. 0 is mute, 0.2 is quiet, 1 is full.",
+			"description": "0 mute, 0.15 quiet, 1 full.",
 			"type": "float",
 			"min": 0,
 			"max": 1,
@@ -81,7 +81,7 @@
 		},
 		"fast-level-enter": {
 			"name": "Fast Level Enter",
-			"description": "Warms thread pool early for smoother first frames.",
+			"description": "Warms thread pool early.",
 			"type": "bool",
 			"default": true
 		},
@@ -97,13 +97,13 @@
 		},
 		"parallel-batch": {
 			"name": "Parallel Batch Transforms",
-			"description": "Thread pool transform updates for large batches.",
+			"description": "Thread pool transforms for large batches.",
 			"type": "bool",
 			"default": true
 		},
 		"parallel-threshold": {
 			"name": "Parallel Threshold",
-			"description": "Child count before parallel transforms run.",
+			"description": "Child count before parallel runs.",
 			"type": "int",
 			"min": 32,
 			"max": 512,
@@ -127,7 +127,7 @@
 		},
 		"cull-margin": {
 			"name": "Cull Margin",
-			"description": "Lower = more aggressive cull.",
+			"description": "Lower = more aggressive.",
 			"type": "float",
 			"min": 20,
 			"max": 400,
@@ -135,7 +135,7 @@
 		},
 		"limit-particles": {
 			"name": "Limit Particle Count",
-			"description": "Hard cap per system every frame.",
+			"description": "Hard cap per system.",
 			"type": "bool",
 			"default": true
 		},
@@ -149,7 +149,7 @@
 		},
 		"reduce-emission": {
 			"name": "Reduce Particle Emission",
-			"description": "Lower spawn rate to cut spikes.",
+			"description": "Lower spawn rate.",
 			"type": "bool",
 			"default": true
 		},
