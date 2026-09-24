@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.2",
+	"version": "v2.0.3",
 	"developer": "ziyyhhk",
-	"description": "Smoother GD with less lag spikes, faster level enter and exit, parallel batches and aggressive particle opts. Live toggles.",
+	"description": "Smoother GD: draw divide style render, background volume on tab out, parallel batches, particle and streak opts, fast level enter exit.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -29,9 +29,45 @@
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Strongest opts including enter exit and particle smooth.",
+			"description": "Strongest opts including draw divide and particle smooth.",
 			"type": "bool",
 			"default": true
+		},
+		"title-render": {
+			"type": "title",
+			"name": "Render"
+		},
+		"draw-divide": {
+			"name": "Draw Divide",
+			"description": "Like mat.draw-divide. Renders at Visual FPS while game logic keeps full speed. Helps GPU lag with high FPS bypass.",
+			"type": "bool",
+			"default": true
+		},
+		"visual-fps": {
+			"name": "Visual FPS",
+			"description": "Target render FPS when Draw Divide is on. Set to your monitor Hz for best results.",
+			"type": "float",
+			"min": 30,
+			"max": 360,
+			"default": 60
+		},
+		"title-audio": {
+			"type": "title",
+			"name": "Audio"
+		},
+		"background-volume": {
+			"name": "Lower Volume When Tabbed Out",
+			"description": "Reduces music and SFX when the game loses focus so YouTube and other apps are easier to hear.",
+			"type": "bool",
+			"default": true
+		},
+		"background-volume-scale": {
+			"name": "Background Volume Scale",
+			"description": "Volume multiplier when tabbed out. 0 is mute, 0.2 is quiet, 1 is full.",
+			"type": "float",
+			"min": 0,
+			"max": 1,
+			"default": 0.15
 		},
 		"title-level": {
 			"type": "title",
@@ -39,13 +75,13 @@
 		},
 		"fast-level-exit": {
 			"name": "Fast Level Exit",
-			"description": "Stops particles and skips non forced save work when leaving a level to cut freezes.",
+			"description": "Stops particles and skips non forced save on quit.",
 			"type": "bool",
 			"default": true
 		},
 		"fast-level-enter": {
 			"name": "Fast Level Enter",
-			"description": "Warms the thread pool early so the first frames of a level are smoother.",
+			"description": "Warms thread pool early for smoother first frames.",
 			"type": "bool",
 			"default": true
 		},
@@ -133,7 +169,7 @@
 		},
 		"smooth-particles": {
 			"name": "Smooth Particles",
-			"description": "Update offscreen particle systems every other frame to reduce spikes.",
+			"description": "Update offscreen systems every other frame.",
 			"type": "bool",
 			"default": true
 		},

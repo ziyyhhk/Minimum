@@ -1,19 +1,14 @@
-# Minimum v2.0.0
+# Minimum v2.0.3
 
-Advanced live toggle optimization mod for Geometry Dash 2.2081 + Geode.
+Advanced live toggle optimization mod for Geometry Dash 2.2081.
 
-Sequel to [Algebra Dash](https://github.com/cgytrus/AlgebraDash).
+## Highlights
 
-## What is new in 2.0
-
-Real std::thread pool  
+Draw Divide style render FPS  
+Background volume when tabbed out  
 Parallel batch transforms  
-Fast batch sort  
-Motion streak culling  
-Stronger particle suite  
-Many grouped settings  
-All main opts are live toggle
+Particle and streak culling  
+Fast level enter and exit  
+Live Enable Minimum switch
 
-## Build
-
-GitHub Actions builds Windows and macOS artifacts on push to main.
+Inspired by [Draw Divide](https://geode-sdk.org/mods/mat.draw-divide) and [Algebra Dash](https://github.com/cgytrus/AlgebraDash).
