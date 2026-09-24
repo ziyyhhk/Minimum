@@ -1,0 +1,41 @@
+{
+	"geode": "4.0.0",
+	"gd": {
+		"win": "2.2081",
+		"android": "2.2081",
+		"mac": "2.2081",
+		"ios": "2.2081"
+	},
+	"id": "minimum.optimization",
+	"name": "Minimum",
+	"version": "1.0.0",
+	"developer": "ziyyhhk",
+	"description": "Algebra Dash mod sequel - modern general optimization mod for Geometry Dash. Faster loading, reduced lagspikes, rendering improvements.",
+	"early-load": true,
+	"tags": ["optimization", "performance", "utility"],
+	"links": {
+		"source": "https://github.com/ziyyhhk/Minimum"
+	},
+	"settings": {
+		"anti-aliasing": {
+			"name": "Anti-aliasing",
+			"description": "Enables antialiasing to improve visual quality. Goes from Off (0) to MSAA x16 (4). Doesn't work on macOS. Requires restart.",
+			"type": "int",
+			"min": 0,
+			"max": 4,
+			"default": 0
+		},
+		"fast-alt-tab": {
+			"name": "Fast Alt Tab",
+			"description": "Disables saving when minimizing the game for faster alt-tabbing.",
+			"type": "bool",
+			"default": true
+		},
+		"force-rgba8888": {
+			"name": "Force RGBA8888",
+			"description": "Makes the game always load textures as RGBA8888 instead of RGBA4444 to improve visual quality. Doesn't work on macOS. Requires texture reload.",
+			"type": "bool",
+			"default": false
+		}
+	}
+}
