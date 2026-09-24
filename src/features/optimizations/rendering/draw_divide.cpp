@@ -3,20 +3,15 @@ using namespace geode::prelude;
 
 #include <Geode/modify/CCDirector.hpp>
 
-// Inspired by mat.draw-divide: render at display refresh rate while logic runs at full FPS.
-// Helps GPU bound systems when using high FPS bypass.
+// Optional. Default OFF. Not forced by Performance Mode anymore.
+// Only skips full scene draws; logic still runs. GPU can get better FPS
+// while the in-game FPS counter still shows logic rate (TPS).
 
 static double g_deltaAccum = 0.0;
 
-static bool minOn() {
-    return Mod::get()->getSettingValue<bool>("mod-enabled");
-}
-
 static bool minDrawDivide() {
-    return minOn() && (
-        Mod::get()->getSettingValue<bool>("draw-divide") ||
-        Mod::get()->getSettingValue<bool>("performance-mode")
-    );
+    return Mod::get()->getSettingValue<bool>("mod-enabled")
+        && Mod::get()->getSettingValue<bool>("draw-divide");
 }
 
 static double minVisualFps() {
@@ -28,7 +23,7 @@ static double minVisualFps() {
 
 struct DrawDivide : Modify<DrawDivide, CCDirector> {
     void drawScene() {
-        if (!minDrawDivide() || this->getTotalFrames() < 60) {
+        if (!minDrawDivide() || this->getTotalFrames() < 120) {
             CCDirector::drawScene();
             return;
         }
@@ -38,14 +33,12 @@ struct DrawDivide : Modify<DrawDivide, CCDirector> {
 
         if (g_deltaAccum >= targetDelta) {
             g_deltaAccum -= targetDelta;
-            // Avoid huge spiral if a long hitch happened
             if (g_deltaAccum > targetDelta * 2.0)
                 g_deltaAccum = 0.0;
             CCDirector::drawScene();
             return;
         }
 
-        // Logic only: update scheduler, skip full GL clear/visit
         if (!this->isPaused()) {
             this->getScheduler()->update(this->getDeltaTime());
         }

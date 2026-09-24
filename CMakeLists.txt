@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(Minimum VERSION 2.0.4)
+project(Minimum VERSION 2.0.5)
 
 add_library(${PROJECT_NAME} SHARED
   src/shared_pool.cpp

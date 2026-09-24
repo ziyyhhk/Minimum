@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.4",
+	"version": "v2.0.5",
 	"developer": "ziyyhhk",
-	"description": "Smoother GD: draw divide render, tab out volume, parallel batches, particle opts, fast level enter exit.",
+	"description": "Live optimization mod. Tab-out volume, optional draw divide, particle and batch opts. Draw divide is OFF by default.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -29,23 +29,23 @@
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Strongest opts including draw divide.",
+			"description": "Forces particle and batch opts only. Does NOT force Draw Divide.",
 			"type": "bool",
 			"default": true
 		},
 		"title-render": {
 			"type": "title",
-			"name": "Render"
+			"name": "Render (optional)"
 		},
 		"draw-divide": {
 			"name": "Draw Divide",
-			"description": "Renders at Visual FPS while logic stays full speed. Big GPU win with high FPS bypass. Visuals may look stepped at very high logic FPS.",
+			"description": "OFF by default. Renders at Visual FPS while logic stays full speed. In-game FPS counter shows logic rate not visual FPS. Only turn on if GPU bound.",
 			"type": "bool",
-			"default": true
+			"default": false
 		},
 		"visual-fps": {
 			"name": "Visual FPS",
-			"description": "Target render FPS. Use your monitor Hz. Lower = more FPS headroom, more stepped look.",
+			"description": "Only used when Draw Divide is ON. Set to monitor Hz.",
 			"type": "float",
 			"min": 30,
 			"max": 360,
@@ -57,7 +57,7 @@
 		},
 		"background-volume": {
 			"name": "Lower Volume When Tabbed Out",
-			"description": "Drops music and SFX when tabbed out so YouTube is clearer.",
+			"description": "Drops music and SFX on alt-tab so YouTube is clearer.",
 			"type": "bool",
 			"default": true
 		},
@@ -67,7 +67,7 @@
 			"type": "float",
 			"min": 0,
 			"max": 1,
-			"default": 0.15
+			"default": 0.1
 		},
 		"title-level": {
 			"type": "title",
@@ -75,7 +75,7 @@
 		},
 		"fast-level-exit": {
 			"name": "Fast Level Exit",
-			"description": "Stops particles and skips non forced save on quit.",
+			"description": "Stops particles on quit to cut freezes.",
 			"type": "bool",
 			"default": true
 		},
