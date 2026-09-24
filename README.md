@@ -1,55 +1,52 @@
 # Minimum
 
-**Algebra Dash mod sequel** — a modern general optimization mod for Geometry Dash.
+Modern general optimization mod for Geometry Dash.
 
-This is a spiritual successor / updated continuation of [cgytrus/AlgebraDash](https://github.com/cgytrus/AlgebraDash) (the original "Algebra is simpler and faster than geometry" optimization mod). The old mod no longer works on current Geometry Dash + Geode, so this repo modernizes the idea and structure for newer versions.
+Spiritual sequel to [Algebra Dash](https://github.com/cgytrus/AlgebraDash). The old mod no longer runs on current Geode and GD, so this project brings the idea forward for 2.2081 and Geode 5.x.
 
-## Features (goals / inherited)
+## Features
 
-- Faster / near-instant loading
-- Reduced lagspikes when enabling/disabling large numbers of objects
-- Rendering multithreading / batch improvements
-- Quality-of-life improvements (anti-aliasing option, fast alt-tab, force RGBA8888)
-- Tracy profiler integration (for further optimization work)
-- More optimizations planned / being ported to current Geode + GD 2.208+
+**Fast Pickup**
+Faster collectible and counter handling when levels spam items.
 
-> **Note:** Many of the original low-level hooks and OpenGL/path hacks were written for much older Geode and GD versions. They need address/binding updates and testing on current 2.2081 + Geode 5.x before they fully work. This repo provides the updated project structure, mod.json, and base so the community (or you) can continue the work.
+**Skip Empty Batches**
+Avoids drawing sprite batches that have nothing to show. Less GPU waste on dense layouts.
 
-## Requirements
+**Cull Offscreen Particles**
+Pauses particle systems far outside the view. Big help against lag spikes from particle heavy levels.
 
-- Geometry Dash 2.208 / 2.2081 (or newer when supported)
-- [Geode](https://geode-sdk.org/) mod loader (v4+ / v5 recommended)
+**Fast Alt Tab**
+Skips the save on minimize so switching windows feels instant.
 
-## Installation
+**Force RGBA8888**
+Loads textures at full color depth for sharper art. Windows only. Reload textures after enabling.
 
-1. Install Geode for your platform from https://geode-sdk.org
-2. Build this mod (see below) or download a release `.geode` when available
-3. Place the `.geode` file in your Geode mods folder
+**Anti Aliasing**
+Optional MSAA. Windows only. Restart required.
+
+## Install
+
+1. Install [Geode](https://geode-sdk.org)
+2. Download the `.geode` from Actions artifacts or a release
+3. Drop it in your Geode mods folder
 4. Launch Geometry Dash
 
-## Building
+## Build
 
 ```bash
-# Make sure GEODE_SDK points to your Geode SDK clone
 export GEODE_SDK=/path/to/geode
-
-# Configure & build (example)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-Or use the official Geode CLI / GitHub Actions workflow.
+Or use the GitHub Actions workflow.
 
 ## Credits
 
-- Original AlgebraDash by **ConfiG / cgytrus** — https://github.com/cgytrus/AlgebraDash
-- Geode team for the modern modding framework
-- Everyone who keeps GD modding alive
+Original Algebra Dash by ConfiG / cgytrus
+Geode team
+Everyone keeping GD modding alive
 
 ## License
 
-MIT (same as the original AlgebraDash)
-
----
-
-*algebra was simpler... minimum aims to be even faster.*
+MIT

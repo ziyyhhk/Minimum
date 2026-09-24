@@ -2,9 +2,8 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(Minimum VERSION 1.0.0)
+project(Minimum VERSION 1.1.0)
 
-# Only include source files that actually exist in the repo
 add_library(${PROJECT_NAME} SHARED
   src/shared_pool.cpp
   src/features/improvements/anti_aliasing.cpp
@@ -12,6 +11,7 @@ add_library(${PROJECT_NAME} SHARED
   src/features/improvements/force_rgba8888.cpp
   src/features/optimizations/processing/fast_pickup.cpp
   src/features/optimizations/rendering/parallel_batch.cpp
+  src/features/optimizations/rendering/cull_particles.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})
@@ -35,6 +35,3 @@ elseif(APPLE)
 elseif(ANDROID)
   target_link_libraries(${PROJECT_NAME} GLESv2)
 endif()
-
-# Note: large original AlgebraDash sources (parallel_loading, update_visibility_rewrite, etc.)
-# are not yet ported. Re-add them to the list above once the files exist and compile on modern Geode.

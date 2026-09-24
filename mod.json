@@ -8,34 +8,52 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"developer": "ziyyhhk",
-	"description": "Algebra Dash mod sequel - modern general optimization mod for Geometry Dash. Faster loading, reduced lagspikes, rendering improvements.",
+	"description": "Modern optimization mod for Geometry Dash. Faster object processing, less lag on dense levels, smoother particles, and quality of life options. Sequel to Algebra Dash.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},
 	"settings": {
-		"anti-aliasing": {
-			"name": "Anti-aliasing",
-			"description": "Enables antialiasing to improve visual quality. Goes from Off (0) to MSAA x16 (4). Doesn't work on macOS. Requires restart.",
-			"type": "int",
-			"min": 0,
-			"max": 4,
-			"default": 0
+		"fast-pickup": {
+			"name": "Fast Pickup",
+			"description": "Faster item collection and counter updates. Helps when levels use many collectibles.",
+			"type": "bool",
+			"default": true
+		},
+		"skip-static-batch": {
+			"name": "Skip Empty Batches",
+			"description": "Skips draw calls for sprite batches with no quads. Reduces GPU work on busy levels.",
+			"type": "bool",
+			"default": true
+		},
+		"cull-particles": {
+			"name": "Cull Offscreen Particles",
+			"description": "Pauses particle systems that are far off screen. Cuts lag spikes from heavy particle spam.",
+			"type": "bool",
+			"default": true
 		},
 		"fast-alt-tab": {
 			"name": "Fast Alt Tab",
-			"description": "Disables saving when minimizing the game for faster alt-tabbing.",
+			"description": "Skips saving when the game loses focus so alt tabbing feels instant.",
 			"type": "bool",
 			"default": true
 		},
 		"force-rgba8888": {
 			"name": "Force RGBA8888",
-			"description": "Makes the game always load textures as RGBA8888 instead of RGBA4444 to improve visual quality. Doesn't work on macOS. Requires texture reload.",
+			"description": "Forces textures to load as RGBA8888 for sharper visuals. Windows only. Needs texture reload.",
 			"type": "bool",
 			"default": false
+		},
+		"anti-aliasing": {
+			"name": "Anti Aliasing",
+			"description": "MSAA level from 0 off to 4 for x16. Windows only. Needs restart.",
+			"type": "int",
+			"min": 0,
+			"max": 4,
+			"default": 0
 		}
 	}
 }
