@@ -47,7 +47,6 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
 
     void update(float dt) {
         if (!minOn()) {
-            // Restore emission if we had scaled it
             if (m_fields->m_origEmission > 0.f) {
                 m_fEmissionRate = m_fields->m_origEmission;
                 m_fields->m_origEmission = -1.f;
@@ -61,7 +60,6 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
             return;
         }
 
-        // Hard particle cap
         if (minLimit()) {
             int cap = minCap();
             if (cap > 0) {
@@ -69,13 +67,11 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
                     m_fields->m_origTotal = m_uTotalParticles;
                 if (m_uTotalParticles > static_cast<unsigned int>(cap))
                     m_uTotalParticles = static_cast<unsigned int>(cap);
-                // Also kill excess live particles
                 if (m_uParticleCount > static_cast<unsigned int>(cap))
                     m_uParticleCount = static_cast<unsigned int>(cap);
             }
         }
 
-        // Reduce emission rate (causes fewer lag spikes from bursts)
         if (minReduceEmit()) {
             if (m_fields->m_origEmission < 0.f)
                 m_fields->m_origEmission = m_fEmissionRate;
@@ -89,11 +85,9 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
         }
 
         if (minCull()) {
-            // World position of the system
             auto world = this->convertToWorldSpace(CCPointZero);
             auto win = CCDirector::get()->getWinSize();
 
-            // Tighter margin in performance mode
             float margin = minPerf() ? 120.f : 280.f;
             bool off =
                 world.x < -margin ||
@@ -104,7 +98,6 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
             m_fields->m_offscreen = off;
 
             if (off) {
-                // Fully stop simulation when far away
                 if (m_uParticleCount == 0 || (minPerf() && m_uParticleCount < 12)) {
                     if (!m_fields->m_stopped) {
                         this->stopSystem();
@@ -113,7 +106,6 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
                     return;
                 }
             } else {
-                // Came back on screen: allow emit again
                 if (m_fields->m_stopped) {
                     this->resetSystem();
                     m_fields->m_stopped = false;
@@ -140,13 +132,7 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
 };
 
 $on_mod(Loaded) {
-    listenForSettingChanges("mod-enabled", [](bool v) {
-        log::info("Minimum: mod {}", v ? "ENABLED" : "DISABLED");
-    });
-    listenForSettingChanges("performance-mode", [](bool v) {
-        log::info("Minimum: performance mode {}", v ? "ON" : "OFF");
-    });
-    listenForSettingChanges("particle-cap", [](int64_t v) {
-        log::info("Minimum: particle cap set to {}", v);
-    });
+    if (Mod::get()->getSettingValue<bool>("mod-enabled")) {
+        log::info("Minimum: enabled. Toggle settings anytime with no restart.");
+    }
 }
