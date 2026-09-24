@@ -1,27 +1,33 @@
 # Minimum
 
-Modern general optimization mod for Geometry Dash.
+Modern optimization mod for Geometry Dash.
 
 Sequel to Algebra Dash by ConfiG / cgytrus. Built for Geode 5.x and GD 2.2081.
 
+## Live toggles (no restart)
+
+Open Geode, open Minimum settings, toggle Enable Minimum or any option while in a level. Changes apply on the next frames so you can A/B compare FPS.
+
 ## What it does
 
-Performance Mode master switch for strongest opts
-Skips empty sprite batch draw calls
-Culls and pauses offscreen particle systems
-Limits particle count per system
-Skips drawing particles that are off screen
-Fast alt tab without waiting on saves
-Optional force RGBA8888 textures
-Optional MSAA anti aliasing
+Master Enable Minimum switch
+Performance Mode for strongest opts
+Skip empty sprite batch draws
+Cull and fully stop offscreen particle systems
+Hard particle count cap (default 48)
+Reduce particle emission rate to cut lag spikes
+Skip drawing offscreen particles
+Fast alt tab
+Optional force RGBA8888
+Optional MSAA
+
+## Dense levels and lag spikes
+
+On levels like Amethyst keep Enable Minimum and Performance Mode on. Set Particle Cap to 40 or lower if spikes remain. Keep Reduce Particle Emission on with Emission Scale around 0.35.
 
 ## Recording and Discord share
 
-Turn Performance Mode on. Keep Skip Empty Batches, Cull Offscreen Particles, Limit Particle Count and Skip Offscreen Particle Draw enabled. Lower Particle Cap if you still lag. Prefer Game Capture in OBS and Discord. AA should stay at 0 while recording.
-
-## Dense levels
-
-On levels with thousands of objects the biggest gains come from Performance Mode, Skip Empty Batches and the particle options.
+Performance Mode on. Particle Cap low. Anti Aliasing at 0. Prefer Game Capture in OBS and Discord.
 
 ## Credits
 

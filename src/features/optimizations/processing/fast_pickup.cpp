@@ -1,12 +1,11 @@
 #include <Geode/Geode.hpp>
 using namespace geode::prelude;
 
-// Fast pickup from Algebra Dash used members that changed in 2.2081.
-// Setting remains for future reimplementation when bindings are confirmed.
-// Performance Mode and particle/batch opts provide the main lag reduction for now.
+// Placeholder for future fast pickup rewrite (2.2081 bindings changed).
+// Master enable and particle/batch opts are the active lag reducers.
 
 $on_mod(Loaded) {
-    if (Mod::get()->getSettingValue<bool>("performance-mode")) {
-        log::info("Minimum: Performance Mode ON (strong particle cull, batch skip, particle cap)");
+    if (Mod::get()->getSettingValue<bool>("mod-enabled")) {
+        log::info("Minimum v1.3.0 loaded. Toggle Enable Minimum anytime with no restart.");
     }
 }
