@@ -1,52 +1,29 @@
 # Minimum
 
-Modern general optimization mod for Geometry Dash.
+Modern optimization mod for Geometry Dash 2.2081 + latest Geode.
 
-Spiritual sequel to [Algebra Dash](https://github.com/cgytrus/AlgebraDash). The old mod no longer runs on current Geode and GD, so this project brings the idea forward for 2.2081 and Geode 5.x.
+Sequel to [Algebra Dash](https://github.com/cgytrus/AlgebraDash).
 
 ## Features
 
-**Fast Pickup**
-Faster collectible and counter handling when levels spam items.
+**Performance Mode** master switch for strongest opts  
+Skip empty sprite batch draws  
+Cull and pause offscreen particles  
+Limit particle count per system  
+Skip drawing offscreen particles  
+Fast alt tab  
+Optional force RGBA8888  
+Optional MSAA
 
-**Skip Empty Batches**
-Avoids drawing sprite batches that have nothing to show. Less GPU waste on dense layouts.
+## Recording / Discord share
 
-**Cull Offscreen Particles**
-Pauses particle systems far outside the view. Big help against lag spikes from particle heavy levels.
-
-**Fast Alt Tab**
-Skips the save on minimize so switching windows feels instant.
-
-**Force RGBA8888**
-Loads textures at full color depth for sharper art. Windows only. Reload textures after enabling.
-
-**Anti Aliasing**
-Optional MSAA. Windows only. Restart required.
-
-## Install
-
-1. Install [Geode](https://geode-sdk.org)
-2. Download the `.geode` from Actions artifacts or a release
-3. Drop it in your Geode mods folder
-4. Launch Geometry Dash
+Enable Performance Mode. Keep particle and batch options on. Set Particle Cap lower if needed. In OBS and Discord use Game Capture. Keep Anti Aliasing at 0 while recording.
 
 ## Build
 
-```bash
-export GEODE_SDK=/path/to/geode
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
-
-Or use the GitHub Actions workflow.
+Uses Geode SDK. GitHub Actions builds Windows and macOS `.geode` artifacts on every push to main.
 
 ## Credits
 
-Original Algebra Dash by ConfiG / cgytrus
+Algebra Dash by ConfiG / cgytrus  
 Geode team
-Everyone keeping GD modding alive
-
-## License
-
-MIT

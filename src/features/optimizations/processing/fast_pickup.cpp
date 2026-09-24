@@ -1,13 +1,12 @@
 #include <Geode/Geode.hpp>
 using namespace geode::prelude;
 
-// Fast pickup from Algebra Dash relied on members that changed in 2.2081.
-// Kept as a stub so the setting still exists and can be re-enabled later
-// when bindings for the current item value path are confirmed.
-// Other optimizations (empty batch skip, particle cull) provide the lag gains.
+// Fast pickup from Algebra Dash used members that changed in 2.2081.
+// Setting remains for future reimplementation when bindings are confirmed.
+// Performance Mode and particle/batch opts provide the main lag reduction for now.
 
 $on_mod(Loaded) {
-    if (Mod::get()->getSettingValue<bool>("fast-pickup")) {
-        log::debug("Minimum: Fast Pickup setting on (full hook pending binding update)");
+    if (Mod::get()->getSettingValue<bool>("performance-mode")) {
+        log::info("Minimum: Performance Mode ON (strong particle cull, batch skip, particle cap)");
     }
 }
