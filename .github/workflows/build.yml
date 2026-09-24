@@ -27,6 +27,6 @@ jobs:
       - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          # Use the geode version from mod.json ("given") or override with latest/nightly
-          sdk: given
+          # Use latest stable Geode SDK to avoid 5.0.0 header bugs
+          sdk: latest
           combine: false
