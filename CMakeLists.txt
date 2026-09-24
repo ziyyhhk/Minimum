@@ -2,19 +2,21 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(Minimum VERSION 2.0.2)
+project(Minimum VERSION 2.0.3)
 
 add_library(${PROJECT_NAME} SHARED
   src/shared_pool.cpp
   src/features/improvements/anti_aliasing.cpp
   src/features/improvements/fast_alt_tab.cpp
   src/features/improvements/force_rgba8888.cpp
+  src/features/improvements/background_audio.cpp
   src/features/optimizations/processing/fast_pickup.cpp
   src/features/optimizations/loading/fast_level.cpp
   src/features/optimizations/rendering/parallel_batch.cpp
   src/features/optimizations/rendering/cull_particles.cpp
   src/features/optimizations/rendering/cull_streaks.cpp
   src/features/optimizations/rendering/fast_batch_sort.cpp
+  src/features/optimizations/rendering/draw_divide.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})

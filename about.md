@@ -1,19 +1,15 @@
-# Minimum v2.0.2
+# Minimum v2.0.3
 
-Smoother Geometry Dash with less lag spikes, faster level enter and exit.
+Smoother Geometry Dash with draw divide style rendering, background volume when tabbed out, and Algebra Dash inspired batch and particle opts.
 
-## New in 2.0.2
+## New in 2.0.3
 
-Fast Level Exit stops particles and skips non forced saves on quit to cut freezes
-Fast Level Enter warms the thread pool early
-Smooth Particles updates offscreen systems every other frame
-Stronger defaults particle cap 16 emission 0.12
-
-## Live toggles
-
-Enable Minimum in Geode settings anytime no restart.
+Lower Volume When Tabbed Out for YouTube and other apps
+Draw Divide style visual FPS while logic stays fast
+All previous particle batch streak enter exit opts
 
 ## Credits
 
+Draw Divide concept by mat / qimiko
 Algebra Dash by ConfiG / cgytrus
 Geode team
