@@ -1,4 +1,9 @@
 #include <shared_pool.hpp>
 
-// Stub - original used BS::thread_pool from bshoshany/thread-pool
-// Re-enable when porting parallel features that need a shared pool.
+// Thread pool is header-implemented. This TU ensures the pool symbol is linked
+// and can be extended with warm-up later.
+namespace Minimum {
+    void warmPool() {
+        (void)pool().size();
+    }
+}

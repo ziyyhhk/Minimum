@@ -8,76 +8,130 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v1.4.0",
+	"version": "v2.0.0",
 	"developer": "ziyyhhk",
-	"description": "Live toggle optimization for Geometry Dash. Stronger particle and batch cuts for dense levels. Toggle on and off in settings with no restart.",
+	"description": "Advanced live toggle optimization for Geometry Dash. Parallel batch transforms, particle and streak culling, many settings. No restart needed to toggle.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},
 	"settings": {
+		"title-main": {
+			"type": "title",
+			"name": "Main"
+		},
 		"mod-enabled": {
 			"name": "Enable Minimum",
-			"description": "Master switch. Toggle in a level with no restart to compare FPS.",
+			"description": "Master switch. Toggle anytime in a level with no restart to compare FPS.",
 			"type": "bool",
 			"default": true
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Strongest particle and batch opts. Use on dense levels.",
+			"description": "Turns on the strongest combination of opts automatically.",
 			"type": "bool",
 			"default": true
 		},
-		"skip-static-batch": {
+		"title-batch": {
+			"type": "title",
+			"name": "Batch rendering"
+		},
+		"skip-empty-batch": {
 			"name": "Skip Empty Batches",
-			"description": "Skip draw for empty sprite batches.",
+			"description": "Skip draw calls for sprite batches with zero quads.",
 			"type": "bool",
 			"default": true
+		},
+		"parallel-batch": {
+			"name": "Parallel Batch Transforms",
+			"description": "Update sprite transforms on a thread pool before drawing large batches.",
+			"type": "bool",
+			"default": true
+		},
+		"parallel-threshold": {
+			"name": "Parallel Threshold",
+			"description": "Minimum child count before parallel transforms kick in.",
+			"type": "int",
+			"min": 32,
+			"max": 512,
+			"default": 64
+		},
+		"fast-batch-sort": {
+			"name": "Fast Batch Sort",
+			"description": "Use stable_sort for large batch child reordering.",
+			"type": "bool",
+			"default": true
+		},
+		"title-particles": {
+			"type": "title",
+			"name": "Particles"
 		},
 		"cull-particles": {
 			"name": "Cull Offscreen Particles",
-			"description": "Skip update and draw for particles far off screen.",
+			"description": "Skip update for particle systems far off screen.",
 			"type": "bool",
 			"default": true
 		},
+		"cull-margin": {
+			"name": "Cull Margin",
+			"description": "Screen margin in points before a particle system is treated as offscreen.",
+			"type": "float",
+			"min": 20,
+			"max": 400,
+			"default": 100
+		},
 		"limit-particles": {
 			"name": "Limit Particle Count",
-			"description": "Cap max particles per system on every update.",
+			"description": "Hard cap particles per system every frame.",
 			"type": "bool",
 			"default": true
 		},
 		"particle-cap": {
 			"name": "Particle Cap",
-			"description": "Max particles per system. Try 24 to 40 on heavy levels.",
+			"description": "Max particles per system. Lower = more FPS.",
 			"type": "int",
-			"min": 8,
+			"min": 4,
 			"max": 200,
-			"default": 32
+			"default": 28
 		},
 		"reduce-emission": {
 			"name": "Reduce Particle Emission",
-			"description": "Lower spawn rate to cut lag spikes.",
+			"description": "Scale down spawn rate to cut lag spikes.",
 			"type": "bool",
 			"default": true
 		},
 		"emission-scale": {
 			"name": "Emission Scale",
-			"description": "Spawn rate multiplier. 0.25 = 25 percent of normal.",
+			"description": "Spawn rate multiplier. 0.2 = 20 percent of normal.",
 			"type": "float",
-			"min": 0.1,
+			"min": 0.05,
 			"max": 1.0,
-			"default": 0.25
+			"default": 0.2
 		},
 		"skip-particle-draw": {
 			"name": "Skip Offscreen Particle Draw",
-			"description": "Do not draw offscreen particles.",
+			"description": "Do not draw offscreen particle systems.",
 			"type": "bool",
 			"default": true
 		},
+		"title-streaks": {
+			"type": "title",
+			"name": "Trails"
+		},
+		"cull-streaks": {
+			"name": "Cull Offscreen Streaks",
+			"description": "Skip motion streak update and draw when off screen.",
+			"type": "bool",
+			"default": true
+		},
+		"title-qol": {
+			"type": "title",
+			"name": "Quality of life"
+		},
 		"fast-alt-tab": {
 			"name": "Fast Alt Tab",
-			"description": "Skip save when unfocusing the game.",
+			"description": "Skip save when the game loses focus.",
 			"type": "bool",
 			"default": true
 		},
@@ -89,7 +143,7 @@
 		},
 		"anti-aliasing": {
 			"name": "Anti Aliasing",
-			"description": "MSAA 0 off to 4. Keep at 0 for best FPS.",
+			"description": "MSAA 0 off to 4. Keep at 0 for max FPS while recording.",
 			"type": "int",
 			"min": 0,
 			"max": 4,

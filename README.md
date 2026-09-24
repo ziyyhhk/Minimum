@@ -1,21 +1,19 @@
-# Minimum
+# Minimum v2.0.0
 
-Live toggle optimization mod for Geometry Dash 2.2081 + Geode.
+Advanced live toggle optimization mod for Geometry Dash 2.2081 + Geode.
 
 Sequel to [Algebra Dash](https://github.com/cgytrus/AlgebraDash).
 
-## Important
+## What is new in 2.0
 
-On extreme dense levels like Amethyst, lag is mostly objects and triggers. This mod cuts particle and empty batch cost. It will not match a full visibility rewrite on every level. Use Enable Minimum to A/B test live.
-
-## Settings
-
-Enable Minimum (master, live)  
-Performance Mode  
-Particle Cap (default 32)  
-Emission Scale (default 0.25)  
-Skip empty batches / cull / skip draw
+Real std::thread pool  
+Parallel batch transforms  
+Fast batch sort  
+Motion streak culling  
+Stronger particle suite  
+Many grouped settings  
+All main opts are live toggle
 
 ## Build
 
-GitHub Actions builds `.geode` on push to main.
+GitHub Actions builds Windows and macOS artifacts on push to main.
