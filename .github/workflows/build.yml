@@ -24,6 +24,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Decode logo.png
+        shell: bash
+        run: |
+          if [ -f logo.png.b64 ]; then
+            base64 -d logo.png.b64 > logo.png 2>/dev/null || base64 --decode logo.png.b64 > logo.png
+            ls -la logo.png
+          fi
+
       - name: Build the mod
         id: build
         uses: geode-sdk/build-geode-mod@main
