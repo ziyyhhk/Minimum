@@ -1,32 +1,13 @@
 #include <Geode/Geode.hpp>
 using namespace geode::prelude;
 
-#include <Geode/modify/GJBaseGameLayer.hpp>
+// Fast pickup from Algebra Dash relied on members that changed in 2.2081.
+// Kept as a stub so the setting still exists and can be re-enabled later
+// when bindings for the current item value path are confirmed.
+// Other optimizations (empty batch skip, particle cull) provide the lag gains.
 
-// Faster collectItem path from Algebra Dash, updated for modern Geode.
-// Avoids extra work when count is zero and clamps id range safely.
-struct FastPickup : Modify<FastPickup, GJBaseGameLayer> {
-    void collectItem(int id, int count) {
-        if (!Mod::get()->getSettingValue<bool>("fast-pickup")) {
-            GJBaseGameLayer::collectItem(id, count);
-            return;
-        }
-        if (count == 0)
-            return;
-        if (id < 0)
-            id = 0;
-        else if (id > 1100)
-            id = 1100;
-
-        // Prefer the normal path if effect manager is missing
-        if (!m_effectManager) {
-            GJBaseGameLayer::collectItem(id, count);
-            return;
-        }
-
-        int value = m_effectManager->m_itemValues[id] + count;
-        m_effectManager->m_itemValues[id] = value;
-        m_effectManager->countChangedForItem(id);
-        this->updateCounters(id, value);
+$on_mod(Loaded) {
+    if (Mod::get()->getSettingValue<bool>("fast-pickup")) {
+        log::debug("Minimum: Fast Pickup setting on (full hook pending binding update)");
     }
-};
+}
