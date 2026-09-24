@@ -27,6 +27,13 @@ static bool minSkipDraw() {
     return minOn() && (Mod::get()->getSettingValue<bool>("skip-particle-draw") || minPerf());
 }
 
+static bool minSmoothParticles() {
+    return minOn() && (
+        Mod::get()->getSettingValue<bool>("smooth-particles") ||
+        minPerf()
+    );
+}
+
 static unsigned int minCap() {
     int c = static_cast<int>(Mod::get()->getSettingValue<int64_t>("particle-cap"));
     if (c < 4) c = 4;
@@ -49,6 +56,7 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
         bool m_offscreen = false;
         float m_baseEmission = -1.f;
         bool m_scaled = false;
+        int m_skipCounter = 0;
     };
 
     void update(float dt) {
@@ -64,6 +72,13 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
         if (!m_bIsActive) {
             CCParticleSystem::update(dt);
             return;
+        }
+
+        // Smooth mode: update half of low priority offscreen work less often
+        if (minSmoothParticles() && m_fields->m_offscreen) {
+            m_fields->m_skipCounter++;
+            if (m_fields->m_skipCounter % 2 == 1)
+                return;
         }
 
         if (minLimit()) {
