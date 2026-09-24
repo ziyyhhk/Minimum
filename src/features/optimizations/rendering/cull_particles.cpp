@@ -27,29 +27,33 @@ static bool minSkipDraw() {
     return minOn() && (Mod::get()->getSettingValue<bool>("skip-particle-draw") || minPerf());
 }
 
-static int minCap() {
-    return static_cast<int>(Mod::get()->getSettingValue<int64_t>("particle-cap"));
+static unsigned int minCap() {
+    int c = static_cast<int>(Mod::get()->getSettingValue<int64_t>("particle-cap"));
+    if (c < 8) c = 8;
+    return static_cast<unsigned int>(c);
 }
 
 static float minEmitScale() {
-    return static_cast<float>(Mod::get()->getSettingValue<double>("emission-scale"));
+    float s = static_cast<float>(Mod::get()->getSettingValue<double>("emission-scale"));
+    if (s < 0.1f) s = 0.1f;
+    if (s > 1.f) s = 1.f;
+    return s;
 }
 
-// Aggressive particle optimization. All checks are live (no restart).
-// Designed for dense levels (Amethyst style) and recording / Discord share.
+// Safer particle optimization. No stopSystem/resetSystem (those caused bugs).
+// Caps, emission scale, skip update/draw offscreen. Live toggles.
 struct CullParticles : Modify<CullParticles, CCParticleSystem> {
     struct Fields {
         bool m_offscreen = false;
-        float m_origEmission = -1.f;
-        unsigned int m_origTotal = 0;
-        bool m_stopped = false;
+        float m_baseEmission = -1.f;
+        bool m_emissionScaled = false;
     };
 
     void update(float dt) {
         if (!minOn()) {
-            if (m_fields->m_origEmission > 0.f) {
-                m_fEmissionRate = m_fields->m_origEmission;
-                m_fields->m_origEmission = -1.f;
+            if (m_fields->m_emissionScaled && m_fields->m_baseEmission >= 0.f) {
+                m_fEmissionRate = m_fields->m_baseEmission;
+                m_fields->m_emissionScaled = false;
             }
             CCParticleSystem::update(dt);
             return;
@@ -60,35 +64,32 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
             return;
         }
 
+        // Cap total and live particles every frame so the game cannot grow past the limit
         if (minLimit()) {
-            int cap = minCap();
-            if (cap > 0) {
-                if (m_fields->m_origTotal == 0)
-                    m_fields->m_origTotal = m_uTotalParticles;
-                if (m_uTotalParticles > static_cast<unsigned int>(cap))
-                    m_uTotalParticles = static_cast<unsigned int>(cap);
-                if (m_uParticleCount > static_cast<unsigned int>(cap))
-                    m_uParticleCount = static_cast<unsigned int>(cap);
-            }
+            auto cap = minCap();
+            if (m_uTotalParticles > cap)
+                m_uTotalParticles = cap;
+            if (m_uParticleCount > cap)
+                m_uParticleCount = cap;
         }
 
+        // Scale emission rate (remember original once)
         if (minReduceEmit()) {
-            if (m_fields->m_origEmission < 0.f)
-                m_fields->m_origEmission = m_fEmissionRate;
-            float scale = minEmitScale();
-            if (scale < 0.1f) scale = 0.1f;
-            if (scale > 1.f) scale = 1.f;
-            m_fEmissionRate = m_fields->m_origEmission * scale;
-        } else if (m_fields->m_origEmission > 0.f) {
-            m_fEmissionRate = m_fields->m_origEmission;
-            m_fields->m_origEmission = -1.f;
+            if (!m_fields->m_emissionScaled) {
+                m_fields->m_baseEmission = m_fEmissionRate;
+                m_fields->m_emissionScaled = true;
+            }
+            m_fEmissionRate = m_fields->m_baseEmission * minEmitScale();
+        } else if (m_fields->m_emissionScaled) {
+            m_fEmissionRate = m_fields->m_baseEmission;
+            m_fields->m_emissionScaled = false;
         }
 
         if (minCull()) {
             auto world = this->convertToWorldSpace(CCPointZero);
             auto win = CCDirector::get()->getWinSize();
+            float margin = minPerf() ? 80.f : 200.f;
 
-            float margin = minPerf() ? 120.f : 280.f;
             bool off =
                 world.x < -margin ||
                 world.y < -margin ||
@@ -97,20 +98,11 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
 
             m_fields->m_offscreen = off;
 
-            if (off) {
-                if (m_uParticleCount == 0 || (minPerf() && m_uParticleCount < 12)) {
-                    if (!m_fields->m_stopped) {
-                        this->stopSystem();
-                        m_fields->m_stopped = true;
-                    }
-                    return;
-                }
-            } else {
-                if (m_fields->m_stopped) {
-                    this->resetSystem();
-                    m_fields->m_stopped = false;
-                }
-            }
+            // Skip full simulation when offscreen and almost empty
+            if (off && m_uParticleCount <= 4)
+                return;
+        } else {
+            m_fields->m_offscreen = false;
         }
 
         CCParticleSystem::update(dt);
@@ -121,18 +113,12 @@ struct CullParticles : Modify<CullParticles, CCParticleSystem> {
             CCParticleSystem::draw();
             return;
         }
-        if (minSkipDraw()) {
-            if (m_fields->m_offscreen)
-                return;
-            if (m_uParticleCount == 0)
-                return;
-        }
+        if (minSkipDraw() && (m_fields->m_offscreen || m_uParticleCount == 0))
+            return;
         CCParticleSystem::draw();
     }
 };
 
 $on_mod(Loaded) {
-    if (Mod::get()->getSettingValue<bool>("mod-enabled")) {
-        log::info("Minimum: enabled. Toggle settings anytime with no restart.");
-    }
+    log::info("Minimum v1.4.0 loaded. Use Enable Minimum to A/B test FPS live.");
 }
