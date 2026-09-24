@@ -24,5 +24,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
+      - name: Build the mod
         uses: geode-sdk/build-geode-mod@main
+        with:
+          # Use the geode version from mod.json ("given") or override with latest/nightly
+          sdk: given
+          combine: false

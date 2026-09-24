@@ -1,5 +1,4 @@
 #include <shared_pool.hpp>
-BS::thread_pool& sharedPool() {
-    static BS::thread_pool _sharedPool(std::thread::hardware_concurrency() - 2);
-    return _sharedPool;
-}
+
+// Stub - original used BS::thread_pool from bshoshany/thread-pool
+// Re-enable when porting parallel features that need a shared pool.
