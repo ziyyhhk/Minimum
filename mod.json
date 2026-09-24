@@ -8,30 +8,50 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "1.1.0",
+	"version": "v1.2.0",
 	"developer": "ziyyhhk",
-	"description": "Modern optimization mod for Geometry Dash. Faster object processing, less lag on dense levels, smoother particles, and quality of life options. Sequel to Algebra Dash.",
+	"description": "Modern optimization mod for Geometry Dash. Faster processing, less lag on dense levels, better FPS while recording or Discord share screen. Sequel to Algebra Dash.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},
 	"settings": {
-		"fast-pickup": {
-			"name": "Fast Pickup",
-			"description": "Faster item collection and counter updates. Helps when levels use many collectibles.",
+		"performance-mode": {
+			"name": "Performance Mode",
+			"description": "Master switch. Turns on the strongest optimizations. Best for recording, streaming and Discord share screen.",
 			"type": "bool",
 			"default": true
 		},
 		"skip-static-batch": {
 			"name": "Skip Empty Batches",
-			"description": "Skips draw calls for sprite batches with no quads. Reduces GPU work on busy levels.",
+			"description": "Skips draw calls for sprite batches with no quads. Less GPU work on busy levels.",
 			"type": "bool",
 			"default": true
 		},
 		"cull-particles": {
 			"name": "Cull Offscreen Particles",
-			"description": "Pauses particle systems that are far off screen. Cuts lag spikes from heavy particle spam.",
+			"description": "Stops updating particle systems far off screen. Cuts lag spikes from particle spam.",
+			"type": "bool",
+			"default": true
+		},
+		"limit-particles": {
+			"name": "Limit Particle Count",
+			"description": "Caps how many particles a system can emit. Big help on levels that spam particles. Slightly less visual effects.",
+			"type": "bool",
+			"default": true
+		},
+		"particle-cap": {
+			"name": "Particle Cap",
+			"description": "Max particles per system when Limit Particle Count is on. Lower = more FPS, fewer effects.",
+			"type": "int",
+			"min": 16,
+			"max": 500,
+			"default": 80
+		},
+		"skip-particle-draw": {
+			"name": "Skip Offscreen Particle Draw",
+			"description": "Does not draw particle systems that are off screen. Saves GPU when recording or sharing screen.",
 			"type": "bool",
 			"default": true
 		},
@@ -49,7 +69,7 @@
 		},
 		"anti-aliasing": {
 			"name": "Anti Aliasing",
-			"description": "MSAA level from 0 off to 4 for x16. Windows only. Needs restart.",
+			"description": "MSAA level from 0 off to 4 for x16. Windows only. Needs restart. Can cost FPS while recording.",
 			"type": "int",
 			"min": 0,
 			"max": 4,
