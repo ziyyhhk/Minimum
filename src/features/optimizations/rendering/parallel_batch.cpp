@@ -14,11 +14,11 @@ static bool minSkipBatch() {
     );
 }
 
-// Skip empty batch draws. Live toggle via Enable Minimum / Skip Empty Batches.
+// Skip empty batch draws. Always check live setting.
 struct SkipEmptyBatch : Modify<SkipEmptyBatch, CCSpriteBatchNode> {
     void draw() {
         if (minSkipBatch()) {
-            auto* atlas = getTextureAtlas();
+            auto* atlas = this->getTextureAtlas();
             if (!atlas || atlas->getTotalQuads() == 0)
                 return;
         }

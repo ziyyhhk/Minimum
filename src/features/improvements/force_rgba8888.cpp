@@ -1,6 +1,5 @@
 #include <Geode/Geode.hpp>
 using namespace geode::prelude;
-
 #include <Geode/modify/CCTexture2D.hpp>
 
 #ifdef GEODE_IS_WINDOWS

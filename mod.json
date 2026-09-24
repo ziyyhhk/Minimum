@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v1.3.0",
+	"version": "v1.4.0",
 	"developer": "ziyyhhk",
-	"description": "Live toggle optimization mod for Geometry Dash. Stronger lag reduction on dense levels, recording and Discord share. Change settings anytime without restart. Sequel to Algebra Dash.",
+	"description": "Live toggle optimization for Geometry Dash. Stronger particle and batch cuts for dense levels. Toggle on and off in settings with no restart.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -19,77 +19,77 @@
 	"settings": {
 		"mod-enabled": {
 			"name": "Enable Minimum",
-			"description": "Master on off switch. Toggle anytime in a level with no restart. Use this to compare FPS with and without the mod.",
+			"description": "Master switch. Toggle in a level with no restart to compare FPS.",
 			"type": "bool",
 			"default": true
 		},
 		"performance-mode": {
 			"name": "Performance Mode",
-			"description": "Strongest opts for dense levels, OBS and Discord share. Applies instantly.",
+			"description": "Strongest particle and batch opts. Use on dense levels.",
 			"type": "bool",
 			"default": true
 		},
 		"skip-static-batch": {
 			"name": "Skip Empty Batches",
-			"description": "Skip draw for sprite batches with zero quads. Live toggle.",
+			"description": "Skip draw for empty sprite batches.",
 			"type": "bool",
 			"default": true
 		},
 		"cull-particles": {
 			"name": "Cull Offscreen Particles",
-			"description": "Stop updating and fully pause particle systems far off screen. Live toggle.",
+			"description": "Skip update and draw for particles far off screen.",
 			"type": "bool",
 			"default": true
 		},
 		"limit-particles": {
 			"name": "Limit Particle Count",
-			"description": "Hard cap particles per system. Cuts lag spikes from particle spam. Live toggle.",
+			"description": "Cap max particles per system on every update.",
 			"type": "bool",
 			"default": true
 		},
 		"particle-cap": {
 			"name": "Particle Cap",
-			"description": "Max particles per system. Lower = more FPS. Try 40 to 60 on Amethyst style levels.",
+			"description": "Max particles per system. Try 24 to 40 on heavy levels.",
 			"type": "int",
 			"min": 8,
-			"max": 300,
-			"default": 48
+			"max": 200,
+			"default": 32
 		},
 		"reduce-emission": {
 			"name": "Reduce Particle Emission",
-			"description": "Cuts how fast particles spawn. Big help on lag spikes. Live toggle.",
+			"description": "Lower spawn rate to cut lag spikes.",
 			"type": "bool",
 			"default": true
 		},
 		"emission-scale": {
 			"name": "Emission Scale",
-			"description": "Multiplier for particle spawn rate when Reduce Particle Emission is on. 0.25 means 25 percent of normal.",
+			"description": "Spawn rate multiplier. 0.25 = 25 percent of normal.",
 			"type": "float",
 			"min": 0.1,
 			"max": 1.0,
-			"default": 0.35
+			"default": 0.25
 		},
 		"skip-particle-draw": {
 			"name": "Skip Offscreen Particle Draw",
-			"description": "Do not draw particles that are off screen. Saves GPU under capture. Live toggle.",
+			"description": "Do not draw offscreen particles.",
 			"type": "bool",
 			"default": true
 		},
 		"fast-alt-tab": {
 			"name": "Fast Alt Tab",
-			"description": "Skip save when the game loses focus.",
+			"description": "Skip save when unfocusing the game.",
 			"type": "bool",
 			"default": true
 		},
 		"force-rgba8888": {
 			"name": "Force RGBA8888",
-			"description": "Sharper textures. Windows only. Needs texture reload or level reenter.",
+			"description": "Sharper textures. Windows only. Needs texture reload.",
 			"type": "bool",
 			"default": false
 		},
 		"anti-aliasing": {
 			"name": "Anti Aliasing",
-			"description": "MSAA 0 off to 4 x16. Costs FPS while recording. Keep at 0 for best performance.",
+			"description": "MSAA 0 off to 4. Keep at 0 for best FPS.",
 			"type": "int",
 			"min": 0,
 			"max": 4,

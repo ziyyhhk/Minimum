@@ -1,35 +1,41 @@
 # Minimum
 
-Modern optimization mod for Geometry Dash.
+Live toggle optimization mod for Geometry Dash 2.2081.
 
-Sequel to Algebra Dash by ConfiG / cgytrus. Built for Geode 5.x and GD 2.2081.
+Sequel to Algebra Dash by ConfiG / cgytrus.
 
-## Live toggles (no restart)
+## Live toggles
 
-Open Geode, open Minimum settings, toggle Enable Minimum or any option while in a level. Changes apply on the next frames so you can A/B compare FPS.
+Geode menu, open Minimum settings, flip Enable Minimum while in a level. No restart. Compare FPS with and without.
 
 ## What it does
 
-Master Enable Minimum switch
-Performance Mode for strongest opts
-Skip empty sprite batch draws
-Cull and fully stop offscreen particle systems
-Hard particle count cap (default 48)
-Reduce particle emission rate to cut lag spikes
-Skip drawing offscreen particles
+Enable Minimum master switch
+Performance Mode
+Skip empty sprite batches
+Cull offscreen particles (skip update and draw)
+Hard particle cap (default 32)
+Reduce particle emission rate (default 25 percent)
 Fast alt tab
-Optional force RGBA8888
-Optional MSAA
+Optional RGBA8888 and MSAA
 
-## Dense levels and lag spikes
+## Dense levels like Amethyst
 
-On levels like Amethyst keep Enable Minimum and Performance Mode on. Set Particle Cap to 40 or lower if spikes remain. Keep Reduce Particle Emission on with Emission Scale around 0.35.
+Amethyst lag is mostly from object count and triggers. Particle and batch opts help but will not match full visibility rewrites from older Algebra Dash on every level.
 
-## Recording and Discord share
+For best results:
+Enable Minimum ON
+Performance Mode ON
+Particle Cap 24 to 32
+Emission Scale 0.25
+Anti Aliasing 0
+Also try the level Low Detail Mode if available
 
-Performance Mode on. Particle Cap low. Anti Aliasing at 0. Prefer Game Capture in OBS and Discord.
+## Recording and Discord
+
+Performance Mode on. Particle Cap low. AA at 0. Use Game Capture.
 
 ## Credits
 
-Original Algebra Dash ideas by ConfiG / cgytrus
-Geode team for the modding framework
+Algebra Dash by ConfiG / cgytrus
+Geode team
