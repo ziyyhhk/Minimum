@@ -25,8 +25,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build the mod
+        id: build
         uses: geode-sdk/build-geode-mod@main
         with:
-          # Use latest stable Geode SDK to avoid 5.0.0 header bugs
           sdk: latest
           combine: false
+
+      - name: Upload .geode artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Minimum-${{ matrix.config.name }}
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
