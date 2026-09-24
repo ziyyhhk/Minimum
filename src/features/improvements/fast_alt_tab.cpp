@@ -10,8 +10,9 @@ struct FastAltTab : geode::Modify<FastAltTab, AppDelegate> {
         isUnfocusing = false;
     }
     void trySaveGame(bool force) {
-        if (Mod::get()->getSettingValue<bool>("fast-alt-tab") && isUnfocusing) {
-            log::debug("fast alt tab: skipping save");
+        bool on = Mod::get()->getSettingValue<bool>("mod-enabled")
+            && Mod::get()->getSettingValue<bool>("fast-alt-tab");
+        if (on && isUnfocusing) {
             return;
         }
         AppDelegate::trySaveGame(force);
@@ -19,6 +20,6 @@ struct FastAltTab : geode::Modify<FastAltTab, AppDelegate> {
 
     static void onModify(auto& self) {
         if (!self.setHookPriority("AppDelegate::trySaveGame", -9999))
-            log::warn("fast alt tab: failed to set hook priority, some stuff might still save");
+            log::warn("fast alt tab: failed to set hook priority");
     }
 };

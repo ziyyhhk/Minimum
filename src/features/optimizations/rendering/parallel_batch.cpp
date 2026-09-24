@@ -3,13 +3,18 @@ using namespace geode::prelude;
 
 #include <Geode/modify/CCSpriteBatchNode.hpp>
 
-static bool minSkipBatch() {
-    return Mod::get()->getSettingValue<bool>("skip-static-batch")
-        || Mod::get()->getSettingValue<bool>("performance-mode");
+static bool minOn() {
+    return Mod::get()->getSettingValue<bool>("mod-enabled");
 }
 
-// Skip empty batch draws. Dense levels create many batch nodes with zero quads.
-// Drawing them still costs setup. This removes that cost and helps under OBS/Discord load.
+static bool minSkipBatch() {
+    return minOn() && (
+        Mod::get()->getSettingValue<bool>("skip-static-batch") ||
+        Mod::get()->getSettingValue<bool>("performance-mode")
+    );
+}
+
+// Skip empty batch draws. Live toggle via Enable Minimum / Skip Empty Batches.
 struct SkipEmptyBatch : Modify<SkipEmptyBatch, CCSpriteBatchNode> {
     void draw() {
         if (minSkipBatch()) {
