@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(Minimum VERSION 1.4.0)
+project(Minimum VERSION 2.0.0)
 
 add_library(${PROJECT_NAME} SHARED
   src/shared_pool.cpp
@@ -12,6 +12,8 @@ add_library(${PROJECT_NAME} SHARED
   src/features/optimizations/processing/fast_pickup.cpp
   src/features/optimizations/rendering/parallel_batch.cpp
   src/features/optimizations/rendering/cull_particles.cpp
+  src/features/optimizations/rendering/cull_streaks.cpp
+  src/features/optimizations/rendering/fast_batch_sort.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})
@@ -35,3 +37,6 @@ elseif(APPLE)
 elseif(ANDROID)
   target_link_libraries(${PROJECT_NAME} GLESv2)
 endif()
+
+find_package(Threads REQUIRED)
+target_link_libraries(${PROJECT_NAME} Threads::Threads)
