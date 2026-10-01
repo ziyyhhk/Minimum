@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.5",
+	"version": "v2.0.6",
 	"developer": "ziyyhhk",
-	"description": "Live optimization mod. Tab-out volume, optional draw divide, particle and batch opts. Draw divide is OFF by default.",
+	"description": "Live optimization mod. Tab-out volume, optional draw divide, particle and batch opts. Draw divide is OFF by default. Do not use with mat.draw-divide.",
 	"early-load": true,
 	"tags": ["optimization", "performance", "utility"],
 	"links": {
@@ -39,13 +39,13 @@
 		},
 		"draw-divide": {
 			"name": "Draw Divide",
-			"description": "OFF by default. Renders at Visual FPS while logic stays full speed. In-game FPS counter shows logic rate not visual FPS. Only turn on if GPU bound.",
+			"description": "OFF by default. Renders at Visual FPS while logic stays full speed. In-game FPS counter shows logic rate not visual FPS. Only turn on if GPU bound. Do NOT use together with mat.draw-divide.",
 			"type": "bool",
 			"default": false
 		},
 		"visual-fps": {
 			"name": "Visual FPS",
-			"description": "Only used when Draw Divide is ON. Set to monitor Hz.",
+			"description": "Only used when Draw Divide is ON. Set to your monitor Hz (e.g. 60, 144, 240).",
 			"type": "float",
 			"min": 30,
 			"max": 360,
@@ -97,13 +97,13 @@
 		},
 		"parallel-batch": {
 			"name": "Parallel Batch Transforms",
-			"description": "Thread pool transforms for large batches.",
+			"description": "DISABLED for stability. Cocos is not thread-safe; this caused crashes. Setting kept for compatibility but has no effect.",
 			"type": "bool",
-			"default": true
+			"default": false
 		},
 		"parallel-threshold": {
 			"name": "Parallel Threshold",
-			"description": "Child count before parallel runs.",
+			"description": "Unused (parallel batch removed).",
 			"type": "int",
 			"min": 32,
 			"max": 512,
@@ -201,7 +201,7 @@
 		},
 		"anti-aliasing": {
 			"name": "Anti Aliasing",
-			"description": "MSAA 0 off to 4. Keep 0 for max FPS.",
+			"description": "MSAA 0 off to 4. Keep 0 for max FPS. (Currently log-only)",
 			"type": "int",
 			"min": 0,
 			"max": 4,

@@ -1,12 +1,12 @@
-# Minimum v2.0.3
+# Minimum v2.0.6
 
-Smoother Geometry Dash with draw divide style rendering, background volume when tabbed out, and Algebra Dash inspired batch and particle opts.
+Smoother Geometry Dash with optional draw divide style rendering, background volume when tabbed out, and particle/batch opts.
 
-## New in 2.0.3
+## New in 2.0.6
 
-Lower Volume When Tabbed Out for YouTube and other apps
-Draw Divide style visual FPS while logic stays fast
-All previous particle batch streak enter exit opts
+Crash fix: removed unsafe parallel batch transforms (Cocos is not thread-safe)
+Hardened Draw Divide
+Version and docs sync
 
 ## Credits
 

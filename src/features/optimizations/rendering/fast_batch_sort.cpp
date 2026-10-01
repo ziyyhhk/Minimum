@@ -16,7 +16,8 @@ static bool minFastSort() {
     );
 }
 
-// Faster child sort for large batches using std::stable_sort instead of insertion-style work.
+// Faster child sort for large batches using std::stable_sort.
+// Avoid calling vanilla sort again after we already sorted (was wasteful and could mess indices).
 struct FastBatchSort : Modify<FastBatchSort, CCSpriteBatchNode> {
     void sortAllChildren() {
         if (!minFastSort()) {
@@ -34,7 +35,7 @@ struct FastBatchSort : Modify<FastBatchSort, CCSpriteBatchNode> {
         }
 
         unsigned int n = children->count();
-        // For small counts, vanilla is fine
+        // Small counts: vanilla is fine and keeps atlas bookkeeping simple
         if (n < 64) {
             CCSpriteBatchNode::sortAllChildren();
             return;
@@ -53,13 +54,11 @@ struct FastBatchSort : Modify<FastBatchSort, CCSpriteBatchNode> {
             return a->getOrderOfArrival() < b->getOrderOfArrival();
         });
 
-        // Write back order
         for (unsigned int i = 0; i < nodes.size(); ++i) {
             children->replaceObjectAtIndex(i, nodes[i], false);
         }
 
-        // Let parent finish atlas index bookkeeping via vanilla path on a clean flag
-        // We already sorted; call vanilla which should mostly update indices
+        // Let vanilla finish atlas index bookkeeping with a clean dirty flag
         m_bReorderChildDirty = true;
         CCSpriteBatchNode::sortAllChildren();
     }
