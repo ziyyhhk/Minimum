@@ -1,8 +1,10 @@
-# Minimum v4.0.0
+# Minimum v4.1.0
 
 A small performance mod for Geometry Dash 2.2081 (Geode 5.10+) for **Windows, macOS, Android and iOS**.
 
-Open the pause menu and tap the logo in the top right corner: quick toggles, a button to all settings, and the credits.
+Open the pause menu and tap the logo: quick toggles, a button to all settings, and the credits.
+The logo sits in the top right by default. If another button is already there it moves to the nearest free spot by itself,
+and you can pick another corner (or hide it) with the *Pause Menu Button* setting.
 
 ## What it does
 
@@ -23,9 +25,11 @@ when the OS closes the app.
 
 ## Input and latency (honest version)
 
-* **Low Latency Mode** (Windows, macOS, on by default) empties the queue of frames the graphics driver keeps in
-  flight, so a click reaches the screen one to two frames sooner. It only runs while the game is holding its frame
-  rate. If your FPS feels worse, switch it off in the pause menu popup.
+* **Low Latency Mode** (Windows, macOS, **off by default**) empties the queue of frames the graphics driver keeps in
+  flight, so a click can reach the screen one to two frames sooner. The price: the CPU waits for the GPU every frame,
+  so on a PC where the GPU is the limit it can lower your FPS. It only runs while the game is holding its frame rate,
+  and if it costs frames it switches itself off for 10 s, then 20 s, 40 s and so on, instead of flickering on and off.
+  If your FPS feels worse, switch it off in the pause menu popup.
 * It does **not** do sub-frame click timing. That is a different system (a separate input thread that timestamps
   clicks and splits physics steps). The *Click Between Frames* mod does exactly that on Windows, and it works next to Minimum.
 * For the lowest latency also turn off V-Sync in the game video settings and use the highest FPS cap you can hold.

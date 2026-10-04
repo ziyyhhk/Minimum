@@ -8,7 +8,7 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v4.0.0",
+	"version": "v4.1.0",
 	"developer": "ziyyhhk",
 	"description": "Performance mod for PC, Mac, Android and iOS. Skips idle particle draws, caps particle pools, adds a pause-menu button with quick settings, a real FPS counter, and (Windows/macOS) a low latency mode. Windows also gets frame pacing tweaks, background throttling and tab-out volume. Visual only: never touches gameplay, physics or timing.",
 	"tags": [
@@ -39,6 +39,19 @@
 				"Balanced",
 				"Performance",
 				"Extreme"
+			]
+		},
+		"pause-button-corner": {
+			"name": "Pause Menu Button",
+			"description": "Where the Minimum logo button sits in the pause menu. If another button is in the way it moves to the nearest free spot by itself. Hidden removes it (open Minimum from the Geode mod list instead).",
+			"type": "string",
+			"default": "Top Right",
+			"one-of": [
+				"Top Right",
+				"Top Left",
+				"Bottom Right",
+				"Bottom Left",
+				"Hidden"
 			]
 		},
 		"toggle-mod-key": {
@@ -77,9 +90,9 @@
 		},
 		"low-latency": {
 			"name": "Low Latency Mode",
-			"description": "Trims the queue of frames the graphics driver keeps in flight, so clicks reach the screen sooner. Only active while the game is holding its frame rate, never changes physics or timing. Costs a little CPU. Turn it off if your FPS feels worse.",
+			"description": "Trims the queue of frames the graphics driver keeps in flight, so clicks reach the screen sooner. It makes the CPU wait for the GPU every frame, so on a GPU limited PC it can LOWER your FPS. Off by default. If you turn it on and the game gets slower, Minimum switches it off by itself for a while.",
 			"type": "bool",
-			"default": true,
+			"default": false,
 			"platforms": [
 				"win",
 				"mac"
