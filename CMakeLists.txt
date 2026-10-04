@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(Minimum VERSION 3.2.0)
+project(Minimum VERSION 4.0.0)
 
 add_library(${PROJECT_NAME} SHARED
   src/main.cpp
@@ -13,6 +13,8 @@ add_library(${PROJECT_NAME} SHARED
   src/system_tuning.cpp
   src/background.cpp
   src/hotkeys.cpp
+  src/latency.cpp
+  src/pause_menu.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})
