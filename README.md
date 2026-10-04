@@ -1,67 +1,46 @@
-# Minimum v3.2.0
+# Minimum v4.0.0
 
-A small performance mod for Geometry Dash 2.2081 (Geode 5.10+) for Windows, macOS, Android and iOS. v3 is a rewrite: everything that did
-nothing, or could crash the game, was removed. What is left is what has a technical reason to help.
+A small performance mod for Geometry Dash 2.2081 (Geode 5.10+) for **Windows, macOS, Android and iOS**.
 
-## Platforms
+Open the pause menu and tap the logo in the top right corner: quick toggles, a button to all settings, and the credits.
 
-Built and tested for:
-- Windows
-- macOS
-- Android (32-bit and 64-bit)
-- iOS
-
-One `.geode` file works on all of them.
-
-Particle changes are visual only. Draw Divide and the background throttle only skip draws; the scheduler
-runs every frame with the same delta time. The system tweaks only change how Windows schedules the process.
-So Minimum is not a cheat mod and is not tagged as one.
-
-## Platform support
+## What it does
 
 | Feature | Windows | macOS | Android | iOS |
 |---|:-:|:-:|:-:|:-:|
-| Skip idle particle draws, particle cap, presets | yes | yes | yes | yes |
-| Adaptive particle cap | yes | yes | yes | yes |
-| Stats line, frame spike logger | yes | yes | yes | yes |
+| Pause menu logo button, quick settings, credits | yes | yes | yes | yes |
+| Real FPS counter (green / yellow / red) | yes | yes | yes | yes |
+| Skip idle particle draws, particle cap, adaptive cap | yes | yes | yes | yes |
+| Frame spike logger | yes | yes | yes | yes |
+| Low Latency Mode (cuts frames queued in the driver) | yes | yes | - | - |
 | Hotkeys | yes | yes | - | - |
 | 1 ms timer, no power throttling, process priority | yes | - | - | - |
 | Background throttle, tab-out volume, Fast Alt Tab, Draw Divide | yes | - | - | - |
 
-Why some things are Windows only: they depend on a reliable "is the window focused" check (Windows has one, the others are not
-verified), or on OS features that only exist on Windows. Fast Alt Tab is left out of mobile on purpose, because the save on
-focus loss is what protects your progress when the OS closes the app.
+Why some things are Windows only: they need a reliable "is the window focused" check or an OS feature that only
+Windows has. Fast Alt Tab is left out of mobile on purpose: the save on focus loss is what protects your progress
+when the OS closes the app.
 
-## Fair play
+## Input and latency (honest version)
 
-Minimum only changes drawing and OS-level pacing. It has no hooks on `PlayLayer`, `GJBaseGameLayer` or `PlayerObject`, does not
-change delta time, and does not alter what the game simulates. It is not tagged as a cheat and does not need Cheat API.
-Draw Divide is the one feature that touches the frame loop: it only skips *rendering* on some frames, the scheduler still gets
-the unchanged delta time. It is off by default.
+* **Low Latency Mode** (Windows, macOS, on by default) empties the queue of frames the graphics driver keeps in
+  flight, so a click reaches the screen one to two frames sooner. It only runs while the game is holding its frame
+  rate. If your FPS feels worse, switch it off in the pause menu popup.
+* It does **not** do sub-frame click timing. That is a different system (a separate input thread that timestamps
+  clicks and splits physics steps). The *Click Between Frames* mod does exactly that on Windows, and it works next to Minimum.
+* For the lowest latency also turn off V-Sync in the game video settings and use the highest FPS cap you can hold.
+  Minimum never changes physics, timing or any gameplay value.
 
-## What it does
+## Check that it works (30 seconds)
 
-| Feature | Default | What it really does |
-|---|---|---|
-| Skip Idle Particle Draws | on | No draw call for particle systems with zero live particles. Dozens of those exist in a level. No visual change. |
-| Cap Particle Pool Size | on (128) | Limits particles per system when the system is created. Helps in particle-heavy levels, thins extreme particle spam. Re-enter the level after changing it. |
-| Throttle Drawing In Background | on (20 fps) | While the game window is not focused, the scene is drawn at 20 fps. Logic and audio keep running. Lower GPU/CPU use while you are tabbed out. |
-| Draw Divide | off | Draws at "Visual FPS" while logic runs at full frame rate. Only useful when your FPS is above your monitor refresh rate. |
-| Lower Volume When Tabbed Out | on | Dims music and SFX on focus loss, restores them on return. |
-| Fast Alt Tab | on | Skips the game save on focus loss. Saves on level exit and on close are untouched. |
-| Show Stats Line | on | Top-left line with drawn frames/s, logic-only frames/s and skipped particle draws/s. Turn it off when you are done testing. |
-| 1 ms Timer Resolution (Windows) | on | Asks Windows for 1 ms timer resolution so frame pacing is less jittery. |
-| Disable Power Throttling (Windows) | on | Opts the game out of Windows efficiency mode so it is not put on slow cores / low clocks. |
-| Process Priority (Windows) | Normal | Optional Above Normal / High. High can starve OBS and Discord. |
-| Frame Spike Logger | on (40 ms) | Logs every frame slower than the threshold to the Geode log with player x position and particle systems created in that frame. |
-| Adaptive Particle Cap | off | Lowers the particle cap by itself (down to 1/8) when the game keeps missing Target FPS. Raises it again after 10 smooth seconds. |
-| Preset | Custom | Balanced / Performance / Extreme overwrite the particle cap and background FPS in one click. |
+1. Start a level. The top-left line shows your real FPS.
+2. Open the pause menu, tap the logo, switch **Minimum** off and on while watching FPS and how the game feels.
+3. Windows: alt-tab away. The line shows `(background)`, GPU use drops, and audio goes quiet. Come back and the audio is back.
 
-## Tracking down lag spikes
+## Does it change gameplay?
 
-No mod can remove a spike without knowing what causes it. Play the level where it stutters, then open the newest file in the Geode log folder
-(Windows / macOS: `geode/logs` inside your Geometry Dash folder, Android: `Android/media/com.geode.launcher/game/geode/logs`)
-and search for `Frame spike`. You can also watch them live in the Geode console (Geode settings). Each line has the frame time, the player x position and how many particle systems were
-created during that frame. If the same x position shows up again and again, that spot in the level is the cause
-(usually a particle or shader trigger). If the particle count is high, try the Performance preset. If spikes happen
-everywhere with no pattern, it is usually the system (background apps, laptop power mode, vsync).
+No. Nothing here touches physics, player movement, level timing, input handling, or any gameplay value.
+Particle changes are visual only. Draw Divide and the background throttle only skip drawing; game logic still
+runs every frame with the same delta time. System tweaks only change how Windows schedules the process.
+
+Still in development.
