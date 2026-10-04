@@ -1,9 +1,10 @@
-# v3.0.0
+# v3.2.0
 
-- Rewrite. Removed the thread pool, parallel batch transforms, batch sort hook, streak culling, fast level exit, anti aliasing log, Force RGBA8888 and early-load.
-- Particle draw hook now targets `CCParticleSystemQuad::draw` (the old hook was never applied).
-- Particle cap is applied when a system is created instead of patching live systems every frame.
-- New: throttle drawing while the game window is not focused.
-- Draw Divide now times frames with a steady clock.
-- Settings are cached instead of looked up on every hook call.
-- New on-screen stats line.
+- Now built for Windows, macOS, Android (32 and 64 bit) and iOS as one .geode file.
+- Settings are per platform. Windows-only features (frame pacing tweaks, background throttle, tab-out volume, Draw Divide, Fast Alt Tab) are hidden on the other platforms.
+- Fast Alt Tab is no longer built for Android / iOS: skipping the background save there could lose progress if the OS closes the app.
+- Tab-out volume now follows the same focus check as the background throttle, so it can not get stuck low.
+- New: Adaptive Particle Cap (opt-in). Lowers the particle cap automatically when the game misses your target FPS.
+- New: hotkeys on desktop to toggle Minimum and the stats line (rebindable).
+- Settings that depend on another setting are greyed out when that setting is off.
+- Stats line keeps clear of the notch on phones.
