@@ -2,116 +2,36 @@
 	"geode": "5.10.0",
 	"gd": {
 		"win": "2.2081",
-		"android": "2.2081",
 		"mac": "2.2081",
-		"ios": "2.2081"
+		"android": "2.2081"
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v2.0.6",
+	"version": "v3.0.0",
 	"developer": "ziyyhhk",
-	"description": "Live optimization mod. Tab-out volume, optional draw divide, particle and batch opts. Draw divide is OFF by default. Do not use with mat.draw-divide.",
-	"early-load": true,
-	"tags": ["optimization", "performance", "utility"],
+	"description": "Small, honest performance mod. Skips draw calls of idle particle systems, caps particle pool sizes, throttles drawing while the game is in the background, optional Draw Divide, tab-out volume. Has an on-screen stats line so you can see it working.",
+	"tags": [
+		"performance",
+		"optimization",
+		"utility"
+	],
 	"links": {
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},
 	"settings": {
-		"title-main": {
+		"title-general": {
 			"type": "title",
-			"name": "Main"
+			"name": "General"
 		},
 		"mod-enabled": {
 			"name": "Enable Minimum",
-			"description": "Master switch. Toggle in a level with no restart.",
+			"description": "Master switch. Turn it off to compare with and without the mod (no restart needed).",
 			"type": "bool",
 			"default": true
 		},
-		"performance-mode": {
-			"name": "Performance Mode",
-			"description": "Forces particle and batch opts only. Does NOT force Draw Divide.",
-			"type": "bool",
-			"default": true
-		},
-		"title-render": {
-			"type": "title",
-			"name": "Render (optional)"
-		},
-		"draw-divide": {
-			"name": "Draw Divide",
-			"description": "OFF by default. Renders at Visual FPS while logic stays full speed. In-game FPS counter shows logic rate not visual FPS. Only turn on if GPU bound. Do NOT use together with mat.draw-divide.",
-			"type": "bool",
-			"default": false
-		},
-		"visual-fps": {
-			"name": "Visual FPS",
-			"description": "Only used when Draw Divide is ON. Set to your monitor Hz (e.g. 60, 144, 240).",
-			"type": "float",
-			"min": 30,
-			"max": 360,
-			"default": 60
-		},
-		"title-audio": {
-			"type": "title",
-			"name": "Audio"
-		},
-		"background-volume": {
-			"name": "Lower Volume When Tabbed Out",
-			"description": "Drops music and SFX on alt-tab so YouTube is clearer.",
-			"type": "bool",
-			"default": true
-		},
-		"background-volume-scale": {
-			"name": "Background Volume Scale",
-			"description": "0 mute, 0.15 quiet, 1 full.",
-			"type": "float",
-			"min": 0,
-			"max": 1,
-			"default": 0.1
-		},
-		"title-level": {
-			"type": "title",
-			"name": "Level enter and exit"
-		},
-		"fast-level-exit": {
-			"name": "Fast Level Exit",
-			"description": "Stops particles on quit to cut freezes.",
-			"type": "bool",
-			"default": true
-		},
-		"fast-level-enter": {
-			"name": "Fast Level Enter",
-			"description": "Warms thread pool early.",
-			"type": "bool",
-			"default": true
-		},
-		"title-batch": {
-			"type": "title",
-			"name": "Batch rendering"
-		},
-		"skip-empty-batch": {
-			"name": "Skip Empty Batches",
-			"description": "Skip draw for empty sprite batches.",
-			"type": "bool",
-			"default": true
-		},
-		"parallel-batch": {
-			"name": "Parallel Batch Transforms",
-			"description": "DISABLED for stability. Cocos is not thread-safe; this caused crashes. Setting kept for compatibility but has no effect.",
-			"type": "bool",
-			"default": false
-		},
-		"parallel-threshold": {
-			"name": "Parallel Threshold",
-			"description": "Unused (parallel batch removed).",
-			"type": "int",
-			"min": 32,
-			"max": 512,
-			"default": 48
-		},
-		"fast-batch-sort": {
-			"name": "Fast Batch Sort",
-			"description": "Faster sort for large batches.",
+		"show-stats": {
+			"name": "Show Stats Line",
+			"description": "Small line in the top-left corner: frames drawn per second, logic-only frames, particle draws skipped. Turn it off once you have confirmed the mod works.",
 			"type": "bool",
 			"default": true
 		},
@@ -119,93 +39,85 @@
 			"type": "title",
 			"name": "Particles"
 		},
-		"cull-particles": {
-			"name": "Cull Offscreen Particles",
-			"description": "Skip update far off screen.",
+		"skip-idle-particles": {
+			"name": "Skip Idle Particle Draws",
+			"description": "Do not issue a draw call for particle systems that have no live particles. No visual change.",
 			"type": "bool",
 			"default": true
 		},
-		"cull-margin": {
-			"name": "Cull Margin",
-			"description": "Lower = more aggressive.",
-			"type": "float",
-			"min": 20,
-			"max": 400,
-			"default": 50
-		},
-		"limit-particles": {
-			"name": "Limit Particle Count",
-			"description": "Hard cap per system.",
+		"cap-particles": {
+			"name": "Cap Particle Pool Size",
+			"description": "Limits how many particles one particle system can hold. Only affects systems created after the change, so re-enter the level. Lower cap = more FPS in particle-heavy levels, thinner effects.",
 			"type": "bool",
 			"default": true
 		},
 		"particle-cap": {
 			"name": "Particle Cap",
-			"description": "Max particles per system.",
+			"description": "Max particles per system. 128 keeps normal effects intact and trims extreme particle spam. 32 is aggressive.",
 			"type": "int",
 			"min": 4,
-			"max": 200,
-			"default": 16
+			"max": 1000,
+			"default": 128
 		},
-		"reduce-emission": {
-			"name": "Reduce Particle Emission",
-			"description": "Lower spawn rate.",
+		"title-background": {
+			"type": "title",
+			"name": "Background"
+		},
+		"background-throttle": {
+			"name": "Throttle Drawing In Background",
+			"description": "While the game window is not focused, draw at Background FPS. Game logic and audio keep running normally. Turn off if you record the game with OBS window capture while it is unfocused.",
 			"type": "bool",
 			"default": true
 		},
-		"emission-scale": {
-			"name": "Emission Scale",
-			"description": "Spawn rate multiplier.",
+		"background-fps": {
+			"name": "Background FPS",
+			"description": "Draw rate while the game window is not focused.",
+			"type": "int",
+			"min": 1,
+			"max": 60,
+			"default": 20
+		},
+		"background-volume": {
+			"name": "Lower Volume When Tabbed Out",
+			"description": "Drops music and SFX when the window loses focus so other audio is clearer.",
+			"type": "bool",
+			"default": true
+		},
+		"background-volume-scale": {
+			"name": "Background Volume Scale",
+			"description": "0 mute, 0.1 quiet, 1 full.",
 			"type": "float",
-			"min": 0.05,
-			"max": 1.0,
-			"default": 0.12
+			"min": 0,
+			"max": 1,
+			"default": 0.1
 		},
-		"skip-particle-draw": {
-			"name": "Skip Offscreen Particle Draw",
-			"description": "Do not draw offscreen particles.",
-			"type": "bool",
-			"default": true
-		},
-		"smooth-particles": {
-			"name": "Smooth Particles",
-			"description": "Update offscreen systems every other frame.",
-			"type": "bool",
-			"default": true
-		},
-		"title-streaks": {
+		"title-render": {
 			"type": "title",
-			"name": "Trails"
+			"name": "Render (advanced)"
 		},
-		"cull-streaks": {
-			"name": "Cull Offscreen Streaks",
-			"description": "Skip streak update and draw off screen.",
-			"type": "bool",
-			"default": true
-		},
-		"title-qol": {
-			"type": "title",
-			"name": "Quality of life"
-		},
-		"fast-alt-tab": {
-			"name": "Fast Alt Tab",
-			"description": "Skip save when unfocusing.",
-			"type": "bool",
-			"default": true
-		},
-		"force-rgba8888": {
-			"name": "Force RGBA8888",
-			"description": "Sharper textures. Windows only.",
+		"draw-divide": {
+			"name": "Draw Divide",
+			"description": "OFF by default. Draws at Visual FPS while game logic keeps running at the full frame rate. Only useful if your FPS is higher than your screen refresh rate (FPS bypass / uncapped). Do NOT use together with the mat.draw-divide mod.",
 			"type": "bool",
 			"default": false
 		},
-		"anti-aliasing": {
-			"name": "Anti Aliasing",
-			"description": "MSAA 0 off to 4. Keep 0 for max FPS. (Currently log-only)",
-			"type": "int",
-			"min": 0,
-			"max": 4,
-			"default": 0
+		"visual-fps": {
+			"name": "Visual FPS",
+			"description": "Draw rate when Draw Divide is on. Set it to your monitor refresh rate (60, 144, 240).",
+			"type": "float",
+			"min": 30,
+			"max": 360,
+			"default": 60
+		},
+		"title-other": {
+			"type": "title",
+			"name": "Other"
+		},
+		"fast-alt-tab": {
+			"name": "Fast Alt Tab",
+			"description": "Skips the game save that happens when the window loses focus, so alt-tab does not stutter. Saving on level exit and on closing the game is untouched.",
+			"type": "bool",
+			"default": true
 		}
 	}
 }
