@@ -32,6 +32,16 @@ using namespace geode::prelude;
 //
 // The first 300 frames (loading) and frames with a pending scene switch are
 // always drawn normally.
+//
+// Spike logger: the gap between two drawScene calls is the real frame time as
+// the player feels it (it includes vsync waits, GC-like allocation stalls,
+// saves, anything). When a gap is longer than the threshold it is written to the
+// Geode log together with where in the level it happened and how many particle
+// systems were created during that frame, so a lag spike can be traced to a cause.
+//
+// The stats line is deliberately short and updated once per second. A long
+// CCLabelBMFont string rebuilds one sprite per character on every setString,
+// which is itself a small periodic hitch.
 
 namespace {
 
@@ -45,11 +55,6 @@ namespace {
     class StatsHud : public CCNode {
     protected:
         CCLabelBMFont* m_label = nullptr;
-        uint64_t m_lastDrawn = 0;
-        uint64_t m_lastLogicOnly = 0;
-        uint64_t m_lastIdleSkipped = 0;
-        uint64_t m_lastSpikes = 0;
-        double m_lastWorst = 0.0;
         std::string m_lastText;
 
         bool init() override {
@@ -87,46 +92,44 @@ namespace {
             layout();
 
             auto& counters = minimum::counters();
-            uint64_t drawn = counters.framesDrawn.load();
-            uint64_t logicOnly = counters.framesLogicOnly.load();
-            uint64_t idleSkipped = counters.idleParticleDrawsSkipped.load();
-            uint64_t spikes = counters.frameSpikes.load();
-            double worst = counters.worstFrameMs.load();
+            uint32_t fps = counters.fps.load();
+            uint32_t logicFps = counters.logicFps.load();
+            uint32_t worstUs = counters.worstFrameUs.load();
+            uint64_t spikes = counters.spikes.load();
+            bool throttled = counters.throttled.load();
 
-            char text[280];
+            char text[200];
             if (cfg.hudDetailed) {
                 std::snprintf(
                     text, sizeof(text),
-                    "Min %s | %llu fps | logic %llu | idle skip %llu | spike %llu | worst %.1f ms",
+                    "Min %s | %u fps | logic %u | worst %.1f ms | spikes %llu%s",
                     cfg.enabled ? "ON" : "OFF",
-                    static_cast<unsigned long long>(drawn - m_lastDrawn),
-                    static_cast<unsigned long long>(logicOnly - m_lastLogicOnly),
-                    static_cast<unsigned long long>(idleSkipped - m_lastIdleSkipped),
-                    static_cast<unsigned long long>(spikes - m_lastSpikes),
-                    worst
+                    fps,
+                    logicFps,
+                    worstUs / 1000.0,
+                    static_cast<unsigned long long>(spikes),
+                    throttled ? " | (background)" : ""
                 );
             } else {
                 std::snprintf(
                     text, sizeof(text),
-                    "Min %s | %llu fps | worst %.0f ms | spikes %llu",
+                    "Min %s | %u fps%s",
                     cfg.enabled ? "ON" : "OFF",
-                    static_cast<unsigned long long>(drawn - m_lastDrawn),
-                    worst,
-                    static_cast<unsigned long long>(spikes - m_lastSpikes)
+                    fps,
+                    throttled ? " (background)" : ""
                 );
             }
+
+            if (fps >= 55) m_label->setColor(ccc3(120, 255, 120));
+            else if (fps >= 30) m_label->setColor(ccc3(255, 225, 90));
+            else m_label->setColor(ccc3(255, 100, 100));
 
             if (text != m_lastText) {
                 m_label->setString(text);
                 m_lastText = text;
             }
 
-            m_lastDrawn = drawn;
-            m_lastLogicOnly = logicOnly;
-            m_lastIdleSkipped = idleSkipped;
-            m_lastSpikes = spikes;
-            m_lastWorst = worst;
-            counters.worstFrameMs.store(0.0);
+            counters.worstFrameUs.store(0);
         }
 
     public:
@@ -167,7 +170,11 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static clock::time_point s_windowStart = clock::now();
         static uint32_t s_windowFrames = 0;
         static uint32_t s_windowSlow = 0;
-        static bool s_wasFocused = true;
+        static uint32_t s_fpsDrawn = 0;
+        static uint32_t s_fpsAll = 0;
+        static clock::time_point s_fpsStart = clock::now();
+        static double s_peakFps = 60.0;
+        static bool s_syncOk = false;
 
         auto const now = clock::now();
         double const rawDelta = std::chrono::duration<double>(now - s_last).count();
@@ -181,10 +188,24 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         unsigned int totalFrames = this->getTotalFrames();
         bool const focused = minimum::processHasForeground(now);
 
-        // ---- Focus changes (Windows): tab-out volume ------------------------------
-        if (focused != s_wasFocused) {
-            s_wasFocused = focused;
-            minimum::onFocusChanged(focused);
+        // ---- Audio (Windows): every frame, not only on focus change --------------
+        minimum::audioPoll(focused);
+
+        // ---- Real FPS counter ----------------------------------------------------
+        ++s_fpsAll;
+        {
+            double const span = std::chrono::duration<double>(now - s_fpsStart).count();
+            if (span >= 0.5) {
+                double const fps = s_fpsDrawn / span;
+                counters.fps.store(static_cast<uint32_t>(fps + 0.5));
+                counters.logicFps.store(static_cast<uint32_t>(s_fpsAll / span + 0.5));
+                // Track a soft peak so low-latency only engages while we are holding FPS.
+                s_peakFps = std::max(fps, s_peakFps * 0.97);
+                s_syncOk = fps >= 30.0 && fps >= 0.95 * s_peakFps;
+                s_fpsDrawn = 0;
+                s_fpsAll = 0;
+                s_fpsStart = now;
+            }
         }
 
         // ---- Adaptive particle cap window (once per second) -----------------------
@@ -205,28 +226,32 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
 
         // ---- Frame time tracking and spike logger --------------------------------
-        // Skipped while loading (first 300 frames) and while unfocused, where long gaps are expected.
         if (totalFrames >= 300 && focused) {
             double ms = rawDelta * 1000.0;
-            if (ms > counters.worstFrameMs.load()) {
-                counters.worstFrameMs.store(ms);
+            uint32_t us = static_cast<uint32_t>(rawDelta * 1e6);
+            if (us > counters.worstFrameUs.load()) {
+                counters.worstFrameUs.store(us);
             }
             if (cfg.spikeLogger && ms >= cfg.spikeThresholdMs) {
-                ++counters.frameSpikes;
+                ++counters.spikes;
                 using namespace std::chrono_literals;
                 if (now - s_lastSpikeLog >= 200ms) {
                     s_lastSpikeLog = now;
-                    uint64_t created = counters.particleSystemsCreated.load() - s_createdSeen;
-                    float playerX = 0.f;
+                    uint64_t createdDuringFrame = counters.particleSystemsCreated.load() - s_createdSeen;
                     if (auto* pl = PlayLayer::get()) {
-                        if (auto* player = pl->m_player1) {
-                            playerX = player->getPositionX();
+                        if (pl->m_player1) {
+                            log::warn(
+                                "Frame spike: {:.1f} ms | in level, player x {:.0f} | particle systems created during the frame: {}",
+                                ms, pl->m_player1->getPositionX(), createdDuringFrame
+                            );
                         }
                     }
-                    log::warn(
-                        "Frame spike: {:.1f} ms at player x={:.0f}, particle systems created this frame={}",
-                        ms, playerX, created
-                    );
+                    else {
+                        log::warn(
+                            "Frame spike: {:.1f} ms | not in a level | particle systems created during the frame: {}",
+                            ms, createdDuringFrame
+                        );
+                    }
                 }
             }
         }
@@ -234,7 +259,6 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
 
 #ifdef GEODE_IS_WINDOWS
         // ---- Frame gate ----------------------------------------------------------
-        // Seconds between two drawn frames. 0 means: draw every frame.
         double interval = 0.0;
         if (cfg.enabled) {
             if (cfg.backgroundThrottle && !focused) {
@@ -245,12 +269,13 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             }
         }
 
+        counters.throttled.store(cfg.enabled && cfg.backgroundThrottle && !focused);
+
         bool mustDraw = interval <= 0.0 || totalFrames < 300 || this->getNextScene() != nullptr;
 
         if (!mustDraw) {
             s_accum += wallDelta;
             if (s_accum < interval) {
-                // Logic-only frame: no glClear, no scene visit, no buffer swap.
                 if (!this->isPaused()) {
                     this->getScheduler()->update(this->getDeltaTime());
                 }
@@ -258,19 +283,26 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 return;
             }
             s_accum -= interval;
-            // Fell more than one interval behind: drop the backlog instead of drawing in a burst.
             if (s_accum > interval) s_accum = 0.0;
         }
         else {
             s_accum = 0.0;
         }
 #else
+        counters.throttled.store(false);
         (void)wallDelta;
         (void)s_accum;
 #endif
 
         CCDirector::drawScene();
         ++counters.framesDrawn;
+        ++s_fpsDrawn;
+
+        // Low latency mode (Windows / macOS): let the GPU catch up before the next
+        // frame starts, so input is not stuck behind frames queued in the driver.
+        if (cfg.enabled && cfg.lowLatency && s_syncOk && focused && totalFrames >= 300) {
+            minimum::hardGpuSync();
+        }
 
         ensureHud(totalFrames);
     }
