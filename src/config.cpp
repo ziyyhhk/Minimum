@@ -23,11 +23,6 @@ namespace minimum {
         bool g_focused = true;
         int g_unfocusedPolls = 0;
 
-        // Adaptive particle cap state (all platforms).
-        unsigned int g_adaptiveCap = 0;
-        int g_goodSeconds = 0;
-        int g_badSeconds = 0;
-
         HudCorner parseCorner(std::string const& v) {
             if (v == "Top Right") return HudCorner::TopRight;
             if (v == "Bottom Left") return HudCorner::BottomLeft;
@@ -133,13 +128,6 @@ namespace minimum {
         c.backgroundThrottle = false;
 #endif
 
-        // Reset adaptive state when the configured cap changes or adaptive is turned off.
-        if (!c.adaptiveCap || c.particleCap != g_config.particleCap) {
-            g_adaptiveCap = c.particleCap;
-            g_goodSeconds = 0;
-            g_badSeconds = 0;
-        }
-
         g_config = c;
         applySystemTuning();
     }
@@ -149,42 +137,6 @@ namespace minimum {
         if (now - g_lastRefresh >= 500ms) {
             g_lastRefresh = now;
             refreshConfig();
-        }
-    }
-
-    unsigned int effectiveParticleCap() {
-        auto const& c = g_config;
-        if (!c.capParticles) return 1000;
-        if (!c.adaptiveCap) return c.particleCap;
-        if (g_adaptiveCap == 0) g_adaptiveCap = c.particleCap;
-        return g_adaptiveCap;
-    }
-
-    void noteFrameWindow(uint32_t frames, uint32_t slowFrames) {
-        auto const& c = g_config;
-        if (!c.adaptiveCap || !c.capParticles || frames == 0) return;
-
-        // More than ~15% of frames in the window were slow: step the cap down.
-        if (slowFrames * 100 / frames >= 15) {
-            g_badSeconds++;
-            g_goodSeconds = 0;
-            if (g_badSeconds >= 2) {
-                g_badSeconds = 0;
-                unsigned int floor = std::max(4u, c.particleCap / 8);
-                if (g_adaptiveCap > floor) {
-                    g_adaptiveCap = std::max(floor, g_adaptiveCap * 3 / 4);
-                }
-            }
-        }
-        else {
-            g_goodSeconds++;
-            g_badSeconds = 0;
-            if (g_goodSeconds >= 10) {
-                g_goodSeconds = 0;
-                if (g_adaptiveCap < c.particleCap) {
-                    g_adaptiveCap = std::min(c.particleCap, g_adaptiveCap + std::max(4u, c.particleCap / 16));
-                }
-            }
         }
     }
 
