@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <string>
 #include <minimum.hpp>
+#include <minimum_logic.hpp>
 
 using namespace geode::prelude;
 
@@ -179,7 +180,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static uint32_t s_fpsDrawn = 0;
         static uint32_t s_fpsAll = 0;
         static clock::time_point s_fpsStart = clock::now();
-        static double s_peakFps = 0.0;
+        static minimum::LatencyGate s_latencyGate;
         static bool s_syncOk = false;
 
         auto const now = clock::now();
@@ -208,10 +209,12 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 counters.fps.store(static_cast<uint32_t>(fps + 0.5));
                 counters.logicFps.store(static_cast<uint32_t>(s_fpsAll / span + 0.5));
 
-                // Low latency mode only runs while the game is holding its frame rate:
-                // close to the best rate seen recently, and not a slideshow.
-                s_peakFps = std::max(fps, s_peakFps * 0.97);
-                s_syncOk = fps >= 30.0 && fps >= 0.95 * s_peakFps;
+                // Low latency mode only runs while the game is holding its frame rate, and
+                // backs off for a growing amount of time when it costs frames (see
+                // minimum::LatencyGate). It is not allowed to flip on and off every window.
+                bool const wantSync = cfg.enabled && cfg.lowLatency && focused && totalFrames >= 300;
+                double const nowSeconds = std::chrono::duration<double>(now.time_since_epoch()).count();
+                s_syncOk = s_latencyGate.update(fps, nowSeconds, wantSync);
 
                 s_fpsDrawn = 0;
                 s_fpsAll = 0;
