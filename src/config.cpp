@@ -21,6 +21,7 @@ namespace minimum {
         std::chrono::steady_clock::time_point g_lastRefresh{};
         std::chrono::steady_clock::time_point g_lastFocusCheck{};
         bool g_focused = true;
+        int g_unfocusedStreak = 0;
 
         HudCorner parseCorner(std::string const& v) {
             if (v == "Top Right") return HudCorner::TopRight;
@@ -37,8 +38,6 @@ namespace minimum {
         }
 #endif
 
-        // Presets only touch the settings that trade quality for speed.
-        // "Custom" leaves every individual setting alone.
         void applyPreset(std::string const& name, Config& c) {
             if (name == "Balanced") {
                 c.particleCap = 128;
@@ -89,8 +88,13 @@ namespace minimum {
         int64_t hudOpacity = mod->getSettingValue<int64_t>("hud-opacity");
         c.hudOpacity = static_cast<uint8_t>(std::clamp<int64_t>(hudOpacity, 20, 255));
 
+#if defined(GEODE_IS_WINDOWS) || defined(GEODE_IS_MACOS)
+        c.lowLatency = mod->getSettingValue<bool>("low-latency");
+#else
+        c.lowLatency = false;
+#endif
+
 #ifdef GEODE_IS_WINDOWS
-        // Windows only settings
         c.backgroundThrottle = mod->getSettingValue<bool>("background-throttle");
         int64_t bgFps = mod->getSettingValue<int64_t>("background-fps");
         c.backgroundFps = static_cast<double>(std::clamp<int64_t>(bgFps, 1, 60));
@@ -143,7 +147,14 @@ namespace minimum {
             if (foreground) {
                 GetWindowThreadProcessId(foreground, &ownerPid);
             }
-            g_focused = foreground != nullptr && ownerPid == GetCurrentProcessId();
+            bool focused = foreground != nullptr && ownerPid == GetCurrentProcessId();
+            if (focused) {
+                g_unfocusedStreak = 0;
+                g_focused = true;
+            } else {
+                // Need two unfocused polls in a row before treating as unfocused.
+                if (++g_unfocusedStreak >= 2) g_focused = false;
+            }
         }
         return g_focused;
 #else
