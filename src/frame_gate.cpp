@@ -63,17 +63,20 @@ namespace {
             m_label = CCLabelBMFont::create("Minimum", "chatFont.fnt");
             if (!m_label) return false;
             this->addChild(m_label);
+            this->applyLayout();
 
             this->schedule(schedule_selector(StatsHud::tick), 0.5f);
-            tick(0.f);
             return true;
         }
 
-        void layout() {
+        void applyLayout() {
             auto const& cfg = minimum::config();
             auto winSize = CCDirector::get()->getWinSize();
-            bool right = cfg.hudCorner == minimum::HudCorner::TopRight || cfg.hudCorner == minimum::HudCorner::BottomRight;
-            bool bottom = cfg.hudCorner == minimum::HudCorner::BottomLeft || cfg.hudCorner == minimum::HudCorner::BottomRight;
+
+            bool right = cfg.hudCorner == minimum::HudCorner::TopRight
+                      || cfg.hudCorner == minimum::HudCorner::BottomRight;
+            bool bottom = cfg.hudCorner == minimum::HudCorner::BottomLeft
+                       || cfg.hudCorner == minimum::HudCorner::BottomRight;
 
             m_label->setAnchorPoint({right ? 1.f : 0.f, bottom ? 0.f : 1.f});
             m_label->setPosition({
@@ -82,54 +85,57 @@ namespace {
             });
             m_label->setScale(cfg.hudScale);
             m_label->setOpacity(cfg.hudOpacity);
+            m_label->setVisible(cfg.showStats);
         }
 
         void tick(float) {
             auto const& cfg = minimum::config();
-            m_label->setVisible(cfg.showStats);
+            this->applyLayout();
             if (!cfg.showStats) return;
-
-            layout();
 
             auto& counters = minimum::counters();
             uint32_t fps = counters.fps.load();
-            uint32_t logicFps = counters.logicFps.load();
-            uint32_t worstUs = counters.worstFrameUs.load();
-            uint64_t spikes = counters.spikes.load();
             bool throttled = counters.throttled.load();
 
-            char text[200];
+            // The FPS number is measured with the wall clock inside the drawScene hook,
+            // not derived from the scheduler, so it is the real number of frames drawn.
+            char text[160];
             if (cfg.hudDetailed) {
+                uint64_t idleSkipped = counters.idleParticleDrawsSkipped.load();
+                double worstMs = counters.worstFrameUs.exchange(0) / 1000.0;
                 std::snprintf(
                     text, sizeof(text),
-                    "Min %s | %u fps | logic %u | worst %.1f ms | spikes %llu%s",
-                    cfg.enabled ? "ON" : "OFF",
+                    "%s%u FPS%s | logic %u/s | worst %.1f ms | spikes %llu | idle skipped %llu | capped %llu",
+                    cfg.enabled ? "" : "(OFF) ",
                     fps,
-                    logicFps,
-                    worstUs / 1000.0,
-                    static_cast<unsigned long long>(spikes),
-                    throttled ? " | (background)" : ""
+                    throttled ? " (background)" : "",
+                    counters.logicFps.load(),
+                    worstMs,
+                    static_cast<unsigned long long>(counters.spikes.load()),
+                    static_cast<unsigned long long>(idleSkipped),
+                    static_cast<unsigned long long>(counters.particlePoolsCapped.load())
                 );
-            } else {
+            }
+            else {
                 std::snprintf(
                     text, sizeof(text),
-                    "Min %s | %u fps%s",
-                    cfg.enabled ? "ON" : "OFF",
+                    "%s%u FPS%s",
+                    cfg.enabled ? "" : "(OFF) ",
                     fps,
                     throttled ? " (background)" : ""
                 );
             }
 
+            // Green when smooth, yellow when so-so, red when bad.
             if (fps >= 55) m_label->setColor(ccc3(120, 255, 120));
             else if (fps >= 30) m_label->setColor(ccc3(255, 225, 90));
             else m_label->setColor(ccc3(255, 100, 100));
 
-            if (text != m_lastText) {
-                m_label->setString(text);
+            // setString rebuilds the whole label, only do it when the text changed.
+            if (m_lastText != text) {
                 m_lastText = text;
+                m_label->setString(text);
             }
-
-            counters.worstFrameUs.store(0);
         }
 
     public:
@@ -173,13 +179,14 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static uint32_t s_fpsDrawn = 0;
         static uint32_t s_fpsAll = 0;
         static clock::time_point s_fpsStart = clock::now();
-        static double s_peakFps = 60.0;
+        static double s_peakFps = 0.0;
         static bool s_syncOk = false;
 
         auto const now = clock::now();
         double const rawDelta = std::chrono::duration<double>(now - s_last).count();
         s_last = now;
-        double wallDelta = std::min(rawDelta, 0.25);
+        // After a hitch (alt-tab, level load) do not try to "catch up" with a burst of draws.
+        double const wallDelta = std::min(rawDelta, 0.25);
 
         minimum::refreshConfigIfDue(now);
         auto const& cfg = minimum::config();
@@ -188,10 +195,11 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         unsigned int totalFrames = this->getTotalFrames();
         bool const focused = minimum::processHasForeground(now);
 
-        // ---- Audio (Windows): every frame, not only on focus change --------------
+        // ---- Tab-out volume (Windows) ----------------------------------------------
+        // Called every frame, stateless: it makes the volume match the focus state now.
         minimum::audioPoll(focused);
 
-        // ---- Real FPS counter ----------------------------------------------------
+        // ---- Measured FPS (wall clock, twice a second) --------------------------------
         ++s_fpsAll;
         {
             double const span = std::chrono::duration<double>(now - s_fpsStart).count();
@@ -199,9 +207,12 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 double const fps = s_fpsDrawn / span;
                 counters.fps.store(static_cast<uint32_t>(fps + 0.5));
                 counters.logicFps.store(static_cast<uint32_t>(s_fpsAll / span + 0.5));
-                // Track a soft peak so low-latency only engages while we are holding FPS.
+
+                // Low latency mode only runs while the game is holding its frame rate:
+                // close to the best rate seen recently, and not a slideshow.
                 s_peakFps = std::max(fps, s_peakFps * 0.97);
                 s_syncOk = fps >= 30.0 && fps >= 0.95 * s_peakFps;
+
                 s_fpsDrawn = 0;
                 s_fpsAll = 0;
                 s_fpsStart = now;
@@ -226,25 +237,31 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
 
         // ---- Frame time tracking and spike logger --------------------------------
+        // Skipped while loading (first 300 frames) and while unfocused, where long gaps are expected.
         if (totalFrames >= 300 && focused) {
-            double ms = rawDelta * 1000.0;
-            uint32_t us = static_cast<uint32_t>(rawDelta * 1e6);
-            if (us > counters.worstFrameUs.load()) {
-                counters.worstFrameUs.store(us);
+            uint32_t us = static_cast<uint32_t>(std::min(rawDelta * 1e6, 4.0e9));
+            if (us > counters.worstFrameUs.load(std::memory_order_relaxed)) {
+                counters.worstFrameUs.store(us, std::memory_order_relaxed);
             }
+
+            double ms = rawDelta * 1000.0;
             if (cfg.spikeLogger && ms >= cfg.spikeThresholdMs) {
                 ++counters.spikes;
+
+                // Rate limit the log so a long freeze or a bad stretch can not flood it.
                 using namespace std::chrono_literals;
-                if (now - s_lastSpikeLog >= 200ms) {
+                if (now - s_lastSpikeLog >= 250ms) {
                     s_lastSpikeLog = now;
-                    uint64_t createdDuringFrame = counters.particleSystemsCreated.load() - s_createdSeen;
-                    if (auto* pl = PlayLayer::get()) {
-                        if (pl->m_player1) {
-                            log::warn(
-                                "Frame spike: {:.1f} ms | in level, player x {:.0f} | particle systems created during the frame: {}",
-                                ms, pl->m_player1->getPositionX(), createdDuringFrame
-                            );
-                        }
+
+                    uint64_t created = counters.particleSystemsCreated.load();
+                    uint64_t createdDuringFrame = created - s_createdSeen;
+
+                    auto* pl = PlayLayer::get();
+                    if (pl && pl->m_player1) {
+                        log::warn(
+                            "Frame spike: {:.1f} ms | in level, player x {:.0f} | particle systems created during the frame: {}",
+                            ms, pl->m_player1->getPositionX(), createdDuringFrame
+                        );
                     }
                     else {
                         log::warn(
@@ -259,6 +276,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
 
 #ifdef GEODE_IS_WINDOWS
         // ---- Frame gate ----------------------------------------------------------
+        // Seconds between two drawn frames. 0 means: draw every frame.
         double interval = 0.0;
         if (cfg.enabled) {
             if (cfg.backgroundThrottle && !focused) {
@@ -276,6 +294,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         if (!mustDraw) {
             s_accum += wallDelta;
             if (s_accum < interval) {
+                // Logic-only frame: no glClear, no scene visit, no buffer swap.
                 if (!this->isPaused()) {
                     this->getScheduler()->update(this->getDeltaTime());
                 }
@@ -283,6 +302,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 return;
             }
             s_accum -= interval;
+            // Fell more than one interval behind: drop the backlog instead of drawing in a burst.
             if (s_accum > interval) s_accum = 0.0;
         }
         else {
