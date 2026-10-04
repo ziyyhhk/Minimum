@@ -1,15 +1,16 @@
-# Minimum v2.0.6
+# Minimum v3.0.0
 
-Smoother Geometry Dash with optional draw divide style rendering, background volume when tabbed out, and particle/batch opts.
+Small, honest performance mod.
 
-## New in 2.0.6
+- Skips draw calls of idle particle systems
+- Caps particle pool sizes (default 128)
+- Throttles drawing while the game window is in the background
+- Optional Draw Divide
+- Lowers volume when tabbed out, fast alt-tab
+- On-screen stats line so you can see it working (toggle in settings)
 
-Crash fix: removed unsafe parallel batch transforms (Cocos is not thread-safe)
-Hardened Draw Divide
-Version and docs sync
+Do not use Draw Divide together with `mat.draw-divide`.
 
 ## Credits
 
-Draw Divide concept by mat / qimiko
-Algebra Dash by ConfiG / cgytrus
-Geode team
+Draw Divide concept by qimiko / mat. Algebra Dash by ConfiG. Geode team.
