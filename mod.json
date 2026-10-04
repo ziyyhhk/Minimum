@@ -3,16 +3,16 @@
 	"gd": {
 		"win": "2.2081",
 		"mac": "2.2081",
-		"android": "2.2081"
+		"android": "2.2081",
+		"ios": "2.2081"
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v3.0.0",
+	"version": "v3.2.0",
 	"developer": "ziyyhhk",
-	"description": "Small, honest performance mod. Skips draw calls of idle particle systems, caps particle pool sizes, throttles drawing while the game is in the background, optional Draw Divide, tab-out volume. Has an on-screen stats line so you can see it working.",
+	"description": "Performance mod for PC, Mac, Android and iOS. Skips idle particle draws, caps (and optionally adapts) particle pools, shows a small FPS / worst-frame stats line, and logs frame spikes so you can find what causes them. Windows adds frame pacing tweaks and background throttling. Visual only: never touches gameplay, physics or timing.",
 	"tags": [
 		"performance",
-		"optimization",
 		"utility"
 	],
 	"links": {
@@ -29,11 +29,43 @@
 			"type": "bool",
 			"default": true
 		},
-		"show-stats": {
-			"name": "Show Stats Line",
-			"description": "Small line in the top-left corner: frames drawn per second, logic-only frames, particle draws skipped. Turn it off once you have confirmed the mod works.",
-			"type": "bool",
-			"default": true
+		"preset": {
+			"name": "Preset",
+			"description": "Balanced / Performance / Extreme overwrite the particle cap and background FPS. Custom leaves every setting alone.",
+			"type": "string",
+			"default": "Custom",
+			"one-of": [
+				"Custom",
+				"Balanced",
+				"Performance",
+				"Extreme"
+			]
+		},
+		"toggle-mod-key": {
+			"name": "Hotkey: Toggle Minimum",
+			"description": "Turns Minimum on or off instantly, so you can compare with and without it.",
+			"type": "keybind",
+			"default": {
+				"win": "Ctrl+Shift+M",
+				"mac": "Cmd+Shift+M"
+			},
+			"platforms": [
+				"win",
+				"mac"
+			]
+		},
+		"toggle-stats-key": {
+			"name": "Hotkey: Toggle Stats Line",
+			"description": "Shows or hides the stats line.",
+			"type": "keybind",
+			"default": {
+				"win": "Ctrl+Shift+H",
+				"mac": "Cmd+Shift+H"
+			},
+			"platforms": [
+				"win",
+				"mac"
+			]
 		},
 		"title-particles": {
 			"type": "title",
@@ -57,17 +89,79 @@
 			"type": "int",
 			"min": 4,
 			"max": 1000,
-			"default": 128
+			"default": 128,
+			"enable-if": "cap-particles"
+		},
+		"adaptive-cap": {
+			"name": "Adaptive Particle Cap (experimental)",
+			"description": "If the game keeps missing Target FPS, the particle cap is lowered step by step (down to 1/8) and raised again once the game is smooth. Visual only. Off by default.",
+			"type": "bool",
+			"default": false,
+			"enable-if": "cap-particles"
+		},
+		"adaptive-target-fps": {
+			"name": "Adaptive Target FPS",
+			"description": "The frame rate you want to hold. Set it to your screen refresh rate (60, 90, 120, 144...). Slow = a frame longer than 1.5x this.",
+			"type": "int",
+			"min": 20,
+			"max": 360,
+			"default": 60,
+			"enable-if": "cap-particles && adaptive-cap"
+		},
+		"title-system": {
+			"type": "title",
+			"name": "System (Windows)",
+			"platforms": [
+				"win"
+			]
+		},
+		"timer-resolution": {
+			"name": "1 ms Timer Resolution",
+			"description": "Asks Windows for 1 ms timer resolution so frame pacing is less jittery.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win"
+			]
+		},
+		"disable-power-throttling": {
+			"name": "Disable Power Throttling",
+			"description": "Opts the game out of Windows efficiency mode so it is not put on slow cores / low clocks.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win"
+			]
+		},
+		"process-priority": {
+			"name": "Process Priority",
+			"description": "Optional Above Normal / High. High can starve OBS and Discord.",
+			"type": "string",
+			"default": "Normal",
+			"one-of": [
+				"Normal",
+				"Above Normal",
+				"High"
+			],
+			"platforms": [
+				"win"
+			]
 		},
 		"title-background": {
 			"type": "title",
-			"name": "Background"
+			"name": "Background (Windows)",
+			"platforms": [
+				"win"
+			]
 		},
 		"background-throttle": {
 			"name": "Throttle Drawing In Background",
 			"description": "While the game window is not focused, draw at Background FPS. Game logic and audio keep running normally. Turn off if you record the game with OBS window capture while it is unfocused.",
 			"type": "bool",
-			"default": true
+			"default": true,
+			"platforms": [
+				"win"
+			]
 		},
 		"background-fps": {
 			"name": "Background FPS",
@@ -75,13 +169,20 @@
 			"type": "int",
 			"min": 1,
 			"max": 60,
-			"default": 20
+			"default": 20,
+			"platforms": [
+				"win"
+			],
+			"enable-if": "background-throttle"
 		},
 		"background-volume": {
 			"name": "Lower Volume When Tabbed Out",
 			"description": "Drops music and SFX when the window loses focus so other audio is clearer.",
 			"type": "bool",
-			"default": true
+			"default": true,
+			"platforms": [
+				"win"
+			]
 		},
 		"background-volume-scale": {
 			"name": "Background Volume Scale",
@@ -89,17 +190,27 @@
 			"type": "float",
 			"min": 0,
 			"max": 1,
-			"default": 0.1
+			"default": 0.1,
+			"platforms": [
+				"win"
+			],
+			"enable-if": "background-volume"
 		},
 		"title-render": {
 			"type": "title",
-			"name": "Render (advanced)"
+			"name": "Render (advanced, Windows)",
+			"platforms": [
+				"win"
+			]
 		},
 		"draw-divide": {
 			"name": "Draw Divide",
 			"description": "OFF by default. Draws at Visual FPS while game logic keeps running at the full frame rate. Only useful if your FPS is higher than your screen refresh rate (FPS bypass / uncapped). Do NOT use together with the mat.draw-divide mod.",
 			"type": "bool",
-			"default": false
+			"default": false,
+			"platforms": [
+				"win"
+			]
 		},
 		"visual-fps": {
 			"name": "Visual FPS",
@@ -107,17 +218,94 @@
 			"type": "float",
 			"min": 30,
 			"max": 360,
-			"default": 60
+			"default": 60,
+			"platforms": [
+				"win"
+			],
+			"enable-if": "draw-divide"
+		},
+		"title-diagnostics": {
+			"type": "title",
+			"name": "Diagnostics"
+		},
+		"spike-logger": {
+			"name": "Frame Spike Logger",
+			"description": "Writes every frame that takes longer than the threshold to the Geode log, with the player x position and how many particle systems were created during that frame. Look for lines containing 'Frame spike' in the files in geode/logs (or in the Geode console).",
+			"type": "bool",
+			"default": true
+		},
+		"spike-threshold-ms": {
+			"name": "Spike Threshold (ms)",
+			"description": "Frames longer than this are logged.",
+			"type": "int",
+			"min": 10,
+			"max": 500,
+			"default": 40,
+			"enable-if": "spike-logger"
+		},
+		"show-stats": {
+			"name": "Show Stats Line",
+			"description": "Small line showing FPS, worst frame time and spike count.",
+			"type": "bool",
+			"default": true
+		},
+		"hud-detail": {
+			"name": "Stats Detail",
+			"description": "Compact or Detailed.",
+			"type": "string",
+			"default": "Compact",
+			"one-of": [
+				"Compact",
+				"Detailed"
+			],
+			"enable-if": "show-stats"
+		},
+		"hud-corner": {
+			"name": "Stats Corner",
+			"description": "Where the stats line sits.",
+			"type": "string",
+			"default": "Top Left",
+			"one-of": [
+				"Top Left",
+				"Top Right",
+				"Bottom Left",
+				"Bottom Right"
+			],
+			"enable-if": "show-stats"
+		},
+		"hud-scale": {
+			"name": "Stats Scale",
+			"description": "Size of the stats line.",
+			"type": "float",
+			"min": 0.2,
+			"max": 2,
+			"default": 0.5,
+			"enable-if": "show-stats"
+		},
+		"hud-opacity": {
+			"name": "Stats Opacity",
+			"description": "0-255 opacity of the stats line.",
+			"type": "int",
+			"min": 20,
+			"max": 255,
+			"default": 200,
+			"enable-if": "show-stats"
 		},
 		"title-other": {
 			"type": "title",
-			"name": "Other"
+			"name": "Other (Windows)",
+			"platforms": [
+				"win"
+			]
 		},
 		"fast-alt-tab": {
 			"name": "Fast Alt Tab",
-			"description": "Skips the game save that happens when the window loses focus, so alt-tab does not stutter. Saving on level exit and on closing the game is untouched.",
+			"description": "Skips the game save that happens when the window loses focus, so alt-tab does not stutter. Saving on level exit and on closing the game is untouched. Not available on Android and iOS on purpose: the OS can close the app right after it goes to the background.",
 			"type": "bool",
-			"default": true
+			"default": true,
+			"platforms": [
+				"win"
+			]
 		}
 	}
 }
