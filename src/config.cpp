@@ -38,20 +38,28 @@ namespace minimum {
         }
 #endif
 
+        // Presets only touch the settings that trade quality for speed.
+        // "Custom" leaves every individual setting alone.
         void applyPreset(std::string const& preset, Config& c) {
             if (preset == "Balanced") {
+                c.skipIdleParticles = true;
                 c.capParticles = true;
                 c.particleCap = 256;
-                c.backgroundFps = 20.0;
+                c.backgroundThrottle = true;
+                c.backgroundFps = 30.0;
             }
             else if (preset == "Performance") {
+                c.skipIdleParticles = true;
                 c.capParticles = true;
                 c.particleCap = 128;
-                c.backgroundFps = 15.0;
+                c.backgroundThrottle = true;
+                c.backgroundFps = 20.0;
             }
             else if (preset == "Extreme") {
+                c.skipIdleParticles = true;
                 c.capParticles = true;
                 c.particleCap = 48;
+                c.backgroundThrottle = true;
                 c.backgroundFps = 10.0;
             }
         }
@@ -91,13 +99,8 @@ namespace minimum {
         int64_t hudOpacity = mod->getSettingValue<int64_t>("hud-opacity");
         c.hudOpacity = static_cast<uint8_t>(std::clamp<int64_t>(hudOpacity, 20, 255));
 
-#if defined(GEODE_IS_WINDOWS) || defined(GEODE_IS_MACOS)
-        c.lowLatency = mod->getSettingValue<bool>("low-latency");
-#else
-        c.lowLatency = false;
-#endif
-
 #ifdef GEODE_IS_WINDOWS
+        // Windows only settings
         c.backgroundThrottle = mod->getSettingValue<bool>("background-throttle");
         int64_t bgFps = mod->getSettingValue<int64_t>("background-fps");
         c.backgroundFps = static_cast<double>(std::clamp<int64_t>(bgFps, 1, 60));
@@ -121,6 +124,11 @@ namespace minimum {
         c.timerResolution = false;
         c.disablePowerThrottling = false;
         c.fastAltTab = false;
+#endif
+
+#ifdef GEODE_IS_DESKTOP
+        // Windows and macOS only (see "platforms" in mod.json).
+        c.lowLatency = mod->getSettingValue<bool>("low-latency");
 #endif
 
         applyPreset(mod->getSettingValue<std::string>("preset"), c);

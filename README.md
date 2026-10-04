@@ -39,8 +39,20 @@ when the OS closes the app.
 
 ## Does it change gameplay?
 
-No. Nothing here touches physics, player movement, level timing, input handling, or any gameplay value.
-Particle changes are visual only. Draw Divide and the background throttle only skip drawing; game logic still
-runs every frame with the same delta time. System tweaks only change how Windows schedules the process.
+No. Particle changes are visual only. Draw Divide, the background throttle and Low Latency Mode only change *when and how
+drawing happens*; game logic keeps running every frame with the same delta time.
 
-Still in development.
+## Honest expectations
+
+* A level that already holds your FPS cap will not run faster. Nothing can beat the cap.
+* Gains show up in particle-heavy levels, in Draw Divide above your refresh rate, and while tabbed out.
+* Do not run Draw Divide together with the `mat.draw-divide` mod. Both hook `CCDirector::drawScene`.
+
+## Credits
+
+* **Developer:** ziyyhhk
+* **Helper:** Rafa
+* **Testers:** Rafa, Broken Team, ziyyhhk
+
+Inspired by [Draw Divide](https://geode-sdk.org/mods/mat.draw-divide) (qimiko / mat, MIT) and
+[Algebra Dash](https://github.com/cgytrus/AlgebraDash) (ConfiG, MIT).

@@ -19,9 +19,9 @@
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},
 	"settings": {
-		"title-general": {
+		"title-main": {
 			"type": "title",
-			"name": "General"
+			"name": "Main"
 		},
 		"mod-enabled": {
 			"name": "Enable Minimum",
@@ -62,6 +62,14 @@
 				"win": "Ctrl+Shift+H",
 				"mac": "Cmd+Shift+H"
 			},
+			"platforms": [
+				"win",
+				"mac"
+			]
+		},
+		"title-latency": {
+			"type": "title",
+			"name": "Latency (Windows / macOS)",
 			"platforms": [
 				"win",
 				"mac"
@@ -127,7 +135,7 @@
 		},
 		"timer-resolution": {
 			"name": "1 ms Timer Resolution",
-			"description": "Asks Windows for 1 ms timer resolution so frame pacing is less jittery.",
+			"description": "Asks Windows for 1 ms timer wakeups instead of ~15.6 ms. Reduces uneven frame pacing when the game waits for the next frame. Slightly higher idle power use.",
 			"type": "bool",
 			"default": true,
 			"platforms": [
@@ -136,7 +144,7 @@
 		},
 		"disable-power-throttling": {
 			"name": "Disable Power Throttling",
-			"description": "Opts the game out of Windows efficiency mode so it is not put on slow cores / low clocks.",
+			"description": "Opts the game out of Windows efficiency mode (EcoQoS) so it is not moved to slow cores or low clocks. Useful on laptops and Windows 11.",
 			"type": "bool",
 			"default": true,
 			"platforms": [
@@ -145,7 +153,7 @@
 		},
 		"process-priority": {
 			"name": "Process Priority",
-			"description": "Optional Above Normal / High. High can starve OBS and Discord.",
+			"description": "Above Normal is safe. High can starve OBS or Discord. Applied immediately, no restart needed.",
 			"type": "string",
 			"default": "Normal",
 			"one-of": [
@@ -166,7 +174,7 @@
 		},
 		"background-throttle": {
 			"name": "Throttle Drawing In Background",
-			"description": "While the game window is not focused, draw at Background FPS. Game logic and audio keep running normally. Turn off if you record the game with OBS window capture while it is unfocused.",
+			"description": "While the game window is not focused, draw at Background FPS. Game logic and audio keep running normally. Windows only. Turn off if you record the game with OBS window capture while it is unfocused.",
 			"type": "bool",
 			"default": true,
 			"platforms": [
@@ -246,7 +254,7 @@
 		},
 		"spike-threshold-ms": {
 			"name": "Spike Threshold (ms)",
-			"description": "Frames longer than this are logged.",
+			"description": "A frame longer than this counts as a spike. 40 ms = a visible stutter at 60 FPS. Lower it if you run 240 FPS and want to catch smaller hitches.",
 			"type": "int",
 			"min": 10,
 			"max": 500,
@@ -254,14 +262,14 @@
 			"enable-if": "spike-logger"
 		},
 		"show-stats": {
-			"name": "Show Stats Line",
-			"description": "Small line showing FPS, worst frame time and spike count.",
+			"name": "Show FPS Counter",
+			"description": "Shows the real FPS in a corner of the screen. Green is smooth, yellow so-so, red bad. Shows (background) while the game is throttled because the window is not focused.",
 			"type": "bool",
 			"default": true
 		},
 		"hud-detail": {
 			"name": "Stats Detail",
-			"description": "Compact or Detailed.",
+			"description": "Compact shows only the FPS. Detailed also shows logic updates per second, worst frame, spikes and particle counters.",
 			"type": "string",
 			"default": "Compact",
 			"one-of": [
@@ -272,7 +280,7 @@
 		},
 		"hud-corner": {
 			"name": "Stats Corner",
-			"description": "Where the stats line sits.",
+			"description": "Where the stats line is drawn.",
 			"type": "string",
 			"default": "Top Left",
 			"one-of": [
@@ -294,7 +302,7 @@
 		},
 		"hud-opacity": {
 			"name": "Stats Opacity",
-			"description": "0-255 opacity of the stats line.",
+			"description": "0-255. Lower is more transparent.",
 			"type": "int",
 			"min": 20,
 			"max": 255,
