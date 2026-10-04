@@ -3,7 +3,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <string>
 
 // Minimum: shared state.
 //
@@ -14,18 +13,10 @@
 
 namespace minimum {
 
-    enum class HudCorner {
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight
-    };
+    enum class HudCorner : uint8_t { TopLeft, TopRight, BottomLeft, BottomRight };
 
-    enum class ProcessPriority {
-        Normal,
-        AboveNormal,
-        High
-    };
+    // 0 = Normal, 1 = Above Normal, 2 = High
+    enum class ProcessPriority : uint8_t { Normal = 0, AboveNormal = 1, High = 2 };
 
     struct Config {
         bool enabled = true;
@@ -35,17 +26,17 @@ namespace minimum {
         bool capParticles = true;
         unsigned int particleCap = 128;
 
-        // Background (game window not focused) — Windows only
+        // Background (game window not focused)
         bool backgroundThrottle = true;
         double backgroundFps = 20.0;
         bool backgroundVolume = true;
         float backgroundVolumeScale = 0.1f;
 
-        // Render — Windows only
+        // Render
         bool drawDivide = false;
         double visualFps = 60.0;
 
-        // System — Windows only
+        // System (Windows only, ignored elsewhere)
         bool timerResolution = true;
         bool disablePowerThrottling = true;
         ProcessPriority priority = ProcessPriority::Normal;
@@ -58,14 +49,17 @@ namespace minimum {
         bool spikeLogger = true;
         double spikeThresholdMs = 40.0;
 
-        // Stats HUD
+        // Stats line
         bool showStats = true;
         bool hudDetailed = false;
         HudCorner hudCorner = HudCorner::TopLeft;
         float hudScale = 0.5f;
         uint8_t hudOpacity = 200;
 
-        // Other — Windows only
+        // Latency (desktop: Windows and macOS)
+        bool lowLatency = false;
+
+        // Other
         bool fastAltTab = true;
     };
 
@@ -77,8 +71,15 @@ namespace minimum {
         std::atomic<uint64_t> idleParticleDrawsSkipped{0};
         std::atomic<uint64_t> particlePoolsCapped{0};
         std::atomic<uint64_t> particleSystemsCreated{0};
-        std::atomic<uint64_t> frameSpikes{0};
-        std::atomic<double> worstFrameMs{0.0};
+        std::atomic<uint64_t> spikes{0};
+        // Longest gap between two frames since the stats line last read it (microseconds).
+        std::atomic<uint32_t> worstFrameUs{0};
+        // Measured with the wall clock inside the drawScene hook, refreshed twice a second.
+        // fps = frames actually drawn per second, logicFps = game updates per second.
+        std::atomic<uint32_t> fps{0};
+        std::atomic<uint32_t> logicFps{0};
+        // True while the background throttle is limiting the draw rate.
+        std::atomic<bool> throttled{false};
     };
 
     Config const& config();
@@ -90,14 +91,21 @@ namespace minimum {
     // Cheap: only re-reads settings if 500 ms passed since the last refresh.
     void refreshConfigIfDue(std::chrono::steady_clock::time_point now);
 
-    // True when a window of this process is the foreground window.
-    // Polls at most every 250 ms. Always true on platforms without an
-    // implementation (macOS), so background throttling simply never triggers there.
+    // True unless the game window is positively known to be unfocused (Windows).
+    // Polls at most every 250 ms and needs two unfocused polls in a row before it says
+    // "unfocused", so a false alarm can never throttle the game or dim the audio.
+    // Always true on platforms without an implementation.
     bool processHasForeground(std::chrono::steady_clock::time_point now);
 
-    // Called by the frame hook when the window gains or loses focus (Windows only,
-    // where focus is polled reliably). Dims / restores the audio. No-op elsewhere.
-    void onFocusChanged(bool focused);
+    // Called by the frame hook every frame with the current focus state (Windows only,
+    // no-op elsewhere). Dims the audio while unfocused and restores it as soon as the
+    // window is focused again. Stateless on purpose: if a restore ever fails it is simply
+    // retried on the next frame, so the volume can not get stuck low.
+    void audioPoll(bool focused);
+
+    // Hard GPU sync (glFinish) after a drawn frame. Trims the queue of frames the driver
+    // keeps in flight, which lowers input-to-screen latency. Windows and macOS only.
+    void hardGpuSync();
 
     // Particle cap that is actually applied right now: the configured cap, lowered
     // in steps by the adaptive cap when the game cannot hold the target FPS.
