@@ -2,15 +2,15 @@
 	"geode": "5.10.0",
 	"gd": {
 		"win": "2.2081",
-		"mac": "2.2081",
 		"android": "2.2081",
+		"mac": "2.2081",
 		"ios": "2.2081"
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v3.2.0",
+	"version": "v4.0.0",
 	"developer": "ziyyhhk",
-	"description": "Performance mod for PC, Mac, Android and iOS. Skips idle particle draws, caps (and optionally adapts) particle pools, shows a small FPS / worst-frame stats line, and logs frame spikes so you can find what causes them. Windows adds frame pacing tweaks and background throttling. Visual only: never touches gameplay, physics or timing.",
+	"description": "Performance mod for PC, Mac, Android and iOS. Skips idle particle draws, caps particle pools, adds a pause-menu button with quick settings, a real FPS counter, and (Windows/macOS) a low latency mode. Windows also gets frame pacing tweaks, background throttling and tab-out volume. Visual only: never touches gameplay, physics or timing.",
 	"tags": [
 		"performance",
 		"utility"
@@ -31,7 +31,7 @@
 		},
 		"preset": {
 			"name": "Preset",
-			"description": "Balanced / Performance / Extreme overwrite the particle cap and background FPS. Custom leaves every setting alone.",
+			"description": "Quick profile for the particle and background settings. Balanced: cap 256. Performance: cap 128. Extreme: cap 48, thin effects. Custom: use the individual settings below. Re-enter the level after changing the cap.",
 			"type": "string",
 			"default": "Custom",
 			"one-of": [
@@ -62,6 +62,16 @@
 				"win": "Ctrl+Shift+H",
 				"mac": "Cmd+Shift+H"
 			},
+			"platforms": [
+				"win",
+				"mac"
+			]
+		},
+		"low-latency": {
+			"name": "Low Latency Mode",
+			"description": "Trims the queue of frames the graphics driver keeps in flight, so clicks reach the screen sooner. Only active while the game is holding its frame rate, never changes physics or timing. Costs a little CPU. Turn it off if your FPS feels worse.",
+			"type": "bool",
+			"default": true,
 			"platforms": [
 				"win",
 				"mac"
