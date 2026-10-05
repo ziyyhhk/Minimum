@@ -3,10 +3,16 @@
 
 using namespace geode::prelude;
 
-// Entry point. All the real work lives in the hooks (frame_gate.cpp,
-// particles.cpp, app_delegate.cpp, mobile_fps.cpp). Here we only fill the
-// settings snapshot once so the hooks have valid values from the first frame.
-
 $on_mod(Loaded) {
     minimum::refreshConfig();
+    auto const& cfg = minimum::config();
+    log::info(
+        "Minimum loaded: enabled={}, particle cap={}, skip idle particle draws={}, "
+        "background throttle={} ({} fps), draw divide={} ({} fps)",
+        cfg.enabled,
+        cfg.capParticles ? static_cast<int>(cfg.particleCap) : 0,
+        cfg.skipIdleParticles,
+        cfg.backgroundThrottle, cfg.backgroundFps,
+        cfg.drawDivide, cfg.visualFps
+    );
 }

@@ -12,37 +12,32 @@ using namespace geode::prelude;
 
 // Frame gate
 //
-// Hooks CCDirector::drawScene. On every platform it measures frame times (spike
-// logger, stats line, adaptive particle cap) and then draws the frame normally.
-// On Windows only, it additionally decides per frame whether the scene is drawn
-// or only updated ("logic-only" frame). Used for:
+// Hooks CCDirector::drawScene. On every platform it measures frame times (FPS counter, 1% low,
+// spike logger, adaptive particle cap), applies the game quality setting and lets the frame
+// run normally. On Windows it can also decide per frame whether the scene is drawn or only
+// updated ("logic-only" frame). That is used for:
 //
-//   * Background throttle: while the game window is not the foreground
-//     window, draw at a low rate (default 20 fps). Nobody is looking, so the
-//     GPU and the CPU side of rendering are freed up.
-//   * Draw Divide (opt-in): draw at "Visual FPS" while game logic keeps
-//     running at the full frame rate. Same idea as the mat.draw-divide mod.
+//   * Background throttle: while the game window is not the foreground window, draw at a
+//     low rate (default 20 fps). Nobody is looking, so the GPU is freed up.
+//   * Draw Divide (opt-in): draw at "Visual FPS" while game logic keeps running at the
+//     full frame rate. Same idea as the mat.draw-divide mod.
 //
-// A logic-only frame runs exactly what the proven Draw Divide implementation
-// runs: scheduler update with the delta time the game's main loop already
-// computed, plus a pending scene switch. calculateDeltaTime() is NOT called
-// on those frames (calling it there creates a speed hack).
+// A logic-only frame runs exactly what the proven Draw Divide implementation runs: scheduler
+// update with the delta time the game's main loop already computed. calculateDeltaTime() is
+// NOT called on those frames (calling it there creates a speed hack).
 //
-// Timing uses std::chrono::steady_clock and not the game's own delta time,
-// so it does not depend on how the game's main loop is paced.
+// Timing uses std::chrono::steady_clock and not the game's own delta time, so it does not
+// depend on how the game's main loop is paced.
 //
-// The first 300 frames (loading) and frames with a pending scene switch are
-// always drawn normally.
+// The first 300 frames (loading) and frames with a pending scene switch are always drawn.
 //
-// Spike logger: the gap between two drawScene calls is the real frame time as
-// the player feels it (it includes vsync waits, GC-like allocation stalls,
-// saves, anything). When a gap is longer than the threshold it is written to the
-// Geode log together with where in the level it happened and how many particle
-// systems were created during that frame, so a lag spike can be traced to a cause.
+// A gap of more than one second between two frames is treated as "the game was away" (phone
+// locked, app switched, window dragged). Those gaps are not counted as stutter and they restart
+// the measurement windows, so coming back to the game never shows a fake FPS drop or makes the
+// low latency guard back off.
 //
-// The stats line is deliberately short and updated once per second. A long
-// CCLabelBMFont string rebuilds one sprite per character on every setString,
-// which is itself a small periodic hitch.
+// The stats line is short and updated twice a second. A long CCLabelBMFont string rebuilds one
+// sprite per character on every setString, which is itself a small periodic hitch.
 
 namespace {
 
@@ -95,42 +90,48 @@ namespace {
             if (!cfg.showStats) return;
 
             auto& counters = minimum::counters();
+            auto& stats = minimum::frameStats();
             uint32_t fps = counters.fps.load();
             bool throttled = counters.throttled.load();
 
             // The FPS number is measured with the wall clock inside the drawScene hook,
             // not derived from the scheduler, so it is the real number of frames drawn.
-            char text[160];
+            char text[200];
             if (cfg.hudDetailed) {
-                uint64_t idleSkipped = counters.idleParticleDrawsSkipped.load();
-                double worstMs = counters.worstFrameUs.exchange(0) / 1000.0;
+                uint32_t low = static_cast<uint32_t>(stats.lowFps(240) + 0.5);
+                double frameMs = stats.averageFrameMs(60);
+#ifdef GEODE_IS_ANDROID
+                double cpuMs = stats.averageCpuMs(60);
                 std::snprintf(
                     text, sizeof(text),
-                    "%s%u FPS%s | logic %u/s | worst %.1f ms | spikes %llu | idle skipped %llu | capped %llu",
-                    cfg.enabled ? "" : "(OFF) ",
-                    fps,
-                    throttled ? " (background)" : "",
-                    counters.logicFps.load(),
-                    worstMs,
-                    static_cast<unsigned long long>(counters.spikes.load()),
-                    static_cast<unsigned long long>(idleSkipped),
-                    static_cast<unsigned long long>(counters.particlePoolsCapped.load())
+                    "%s%u FPS%s | low %u | %.1f ms | cpu %.1f ms | logic %u/s | spikes %llu",
+                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
+                    low, frameMs, cpuMs, counters.logicFps.load(),
+                    static_cast<unsigned long long>(counters.spikes.load())
                 );
+#else
+                std::snprintf(
+                    text, sizeof(text),
+                    "%s%u FPS%s | low %u | %.1f ms | logic %u/s | spikes %llu",
+                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
+                    low, frameMs, counters.logicFps.load(),
+                    static_cast<unsigned long long>(counters.spikes.load())
+                );
+#endif
             }
             else {
                 std::snprintf(
-                    text, sizeof(text),
-                    "%s%u FPS%s",
-                    cfg.enabled ? "" : "(OFF) ",
-                    fps,
-                    throttled ? " (background)" : ""
+                    text, sizeof(text), "%s%u FPS%s",
+                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : ""
                 );
             }
 
-            // Green when smooth, yellow when so-so, red when bad.
-            if (fps >= 55) m_label->setColor(ccc3(120, 255, 120));
-            else if (fps >= 30) m_label->setColor(ccc3(255, 225, 90));
-            else m_label->setColor(ccc3(255, 100, 100));
+            // Green when it holds the target, yellow when it does not quite, red when bad.
+            switch (minimum::classifyFps(fps, cfg.targetFps)) {
+                case minimum::FpsBand::Good: m_label->setColor(ccc3(120, 255, 120)); break;
+                case minimum::FpsBand::Okay: m_label->setColor(ccc3(255, 225, 90)); break;
+                case minimum::FpsBand::Bad: m_label->setColor(ccc3(255, 100, 100)); break;
+            }
 
             // setString rebuilds the whole label, only do it when the text changed.
             if (m_lastText != text) {
@@ -153,9 +154,13 @@ namespace {
 
     bool g_hudCreated = false;
 
+}
+
+namespace minimum {
+
     void ensureHud(unsigned int totalFrames) {
         if (g_hudCreated || totalFrames < 200) return;
-        if (!minimum::config().showStats) return;
+        if (!config().showStats) return;
 
         auto* overlay = OverlayManager::get();
         if (!overlay) return;
@@ -171,6 +176,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
     void drawScene() {
         using clock = std::chrono::steady_clock;
         static clock::time_point s_last = clock::now();
+        static clock::time_point s_lastDrawn = clock::now();
         static clock::time_point s_lastSpikeLog{};
         static double s_accum = 0.0;
         static uint64_t s_createdSeen = 0;
@@ -195,6 +201,24 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
 
         unsigned int totalFrames = this->getTotalFrames();
         bool const focused = minimum::processHasForeground(now);
+
+        // The game was away (phone locked, app switched, window dragged). Start every
+        // measurement over so that gap is not mistaken for stutter.
+        bool const resumed = rawDelta > 1.0;
+        if (resumed) {
+            s_fpsDrawn = 0;
+            s_fpsAll = 0;
+            s_fpsStart = now;
+            s_windowStart = now;
+            s_windowFrames = 0;
+            s_windowSlow = 0;
+            s_lastDrawn = now;
+            minimum::frameStats().clear();
+        }
+        bool const measurable = totalFrames >= 300 && focused && !resumed;
+
+        // Game quality (low detail mode), only does something when the setting changed.
+        minimum::applyGameQuality();
 
         // ---- Tab-out volume (Windows) ----------------------------------------------
         // Called every frame, stateless: it makes the volume match the focus state now.
@@ -223,9 +247,9 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
 
         // ---- Adaptive particle cap window (once per second) -----------------------
-        if (totalFrames >= 300 && focused) {
+        if (measurable) {
             ++s_windowFrames;
-            if (cfg.adaptiveCap && rawDelta * 1000.0 > 1500.0 / cfg.adaptiveTargetFps) {
+            if (cfg.adaptiveCap && rawDelta * 1000.0 > 1500.0 / cfg.targetFps) {
                 ++s_windowSlow;
             }
         }
@@ -240,8 +264,9 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
 
         // ---- Frame time tracking and spike logger --------------------------------
-        // Skipped while loading (first 300 frames) and while unfocused, where long gaps are expected.
-        if (totalFrames >= 300 && focused) {
+        // Skipped while loading (first 300 frames), while unfocused and after the game was
+        // away, where long gaps are expected.
+        if (measurable) {
             uint32_t us = static_cast<uint32_t>(std::min(rawDelta * 1e6, 4.0e9));
             if (us > counters.worstFrameUs.load(std::memory_order_relaxed)) {
                 counters.worstFrameUs.store(us, std::memory_order_relaxed);
@@ -317,17 +342,34 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         (void)s_accum;
 #endif
 
+        auto const drawStart = clock::now();
         CCDirector::drawScene();
+        auto const drawEnd = clock::now();
         ++counters.framesDrawn;
         ++s_fpsDrawn;
 
-        // Low latency mode: let the GPU catch up before the next frame starts, so
-        // input is not stuck behind frames queued in the driver. Works on desktop
-        // and on mobile (GLES exports glFinish under the same name).
+        // Per drawn frame: how long since the previous drawn frame (what the player sees) and
+        // how long this call took. On Android the buffer swap happens after drawScene returns,
+        // so that second number is the CPU work of the frame, which is what the CPU hint needs.
+        if (measurable) {
+            double const frameMs = std::chrono::duration<double, std::milli>(drawStart - s_lastDrawn).count();
+            double const workMs = std::chrono::duration<double, std::milli>(drawEnd - drawStart).count();
+            minimum::frameStats().push(std::min(frameMs, 1000.0), workMs);
+            minimum::reportCpuWork(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(drawEnd - drawStart).count()
+            );
+        }
+        else {
+            minimum::reportCpuWork(0);
+        }
+        s_lastDrawn = drawStart;
+
+        // Low latency mode: let the GPU catch up before the next frame starts, so input is
+        // not stuck behind frames queued in the driver.
         if (cfg.enabled && cfg.lowLatency && s_syncOk && focused && totalFrames >= 300) {
             minimum::hardGpuSync();
         }
 
-        ensureHud(totalFrames);
+        minimum::ensureHud(totalFrames);
     }
 };

@@ -2,10 +2,10 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
-#include <Geode/utils/web.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <minimum.hpp>
@@ -15,8 +15,8 @@ using namespace geode::prelude;
 
 // Pause menu button + Minimum popup (all platforms).
 //
-// A round logo button in the pause menu opens a small popup with the quick toggles, a button to
-// the full settings page, and the credits.
+// A round logo button in the pause menu opens a popup with a live FPS card, the presets, the quick
+// toggles, a button to the full settings page, and the credits.
 //
 // The button used to be dropped at one fixed point of the screen. Other buttons (the game's own
 // ones and the ones other mods add) live in the same corner, so it could sit on top of them, and
@@ -27,11 +27,24 @@ using namespace geode::prelude;
 
 namespace {
 
-    // ---- Look of the popup ----------------------------------------------------------------
-    constexpr uint8_t kPanelOpacity = 26; // toggle cards, over the black popup (0-255)
+    // Credits shown in the popup.
+    constexpr char const* kDeveloper = "ziyyhhk";
+    constexpr char const* kHelper = "Rafa";
+    constexpr char const* kTesters = "Rafa, Broken Team, ziyyhhk";
+
+    // ---- Look of the popup. The layout itself (sizes, spacing, rows) is computed by
+    // minimum::planPopup in minimum_logic.hpp and unit tested; these are only the colors. -----
+    constexpr uint8_t kCardOpacity = 26;      // toggle cards, over the dark popup (0-255)
+    constexpr uint8_t kLiveOpacity = 44;      // the live FPS card
+    constexpr uint8_t kPresetOpacity = 26;    // preset buttons that are not selected
+    constexpr uint8_t kPresetSelectedOpacity = 150;
 
     // ---- The pause menu button ------------------------------------------------------------
+#ifdef GEODE_IS_MOBILE
+    constexpr float kButtonSize = 42.f;
+#else
     constexpr float kButtonSize = 36.f;
+#endif
 #ifdef GEODE_IS_MOBILE
     constexpr float kButtonMargin = 38.f; // stay clear of notches and rounded corners
 #else
@@ -63,11 +76,11 @@ namespace {
     }
 
     // A soft rounded rectangle, used behind the toggles and the credits.
-    CCScale9Sprite* makePanel(float width, float height) {
+    CCScale9Sprite* makePanel(float width, float height, uint8_t opacity = kCardOpacity) {
         auto* panel = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (!panel) return nullptr;
         panel->setColor(ccc3(255, 255, 255));
-        panel->setOpacity(kPanelOpacity);
+        panel->setOpacity(opacity);
         panel->setContentSize({width, height});
         return panel;
     }
@@ -190,150 +203,273 @@ namespace {
 
 class MinimumPopup : public Popup {
 protected:
-    std::vector<std::string> m_keys;
+    struct ToggleDef {
+        char const* key;
+        char const* label;
+    };
+    struct PresetButton {
+        CCScale9Sprite* background = nullptr;
+        char const* name = "";
+    };
+
+    std::vector<ToggleDef> m_toggles;
     std::vector<CCMenuItemToggler*> m_togglers;
+    std::vector<PresetButton> m_presetButtons;
     CCLabelBMFont* m_fpsLabel = nullptr;
+    CCLabelBMFont* m_lowLabel = nullptr;
+    CCLabelBMFont* m_frameLabel = nullptr;
+    std::string m_lastFps;
+    std::string m_lastLow;
+    std::string m_lastFrame;
+
+    static constexpr char const* kPresetNames[4] = {"Custom", "Balanced", "Performance", "Extreme"};
+
+    // What a toggle is really doing right now. A preset can override a few settings, so the
+    // stored value is not always the truth, the active config is.
+    static bool effectiveValue(char const* key) {
+        auto const& cfg = minimum::config();
+        if (!std::strcmp(key, "mod-enabled")) return cfg.enabled;
+        if (!std::strcmp(key, "show-stats")) return cfg.showStats;
+        if (!std::strcmp(key, "skip-idle-particles")) return cfg.skipIdleParticles;
+        if (!std::strcmp(key, "cap-particles")) return cfg.capParticles;
+        if (!std::strcmp(key, "low-latency")) return cfg.lowLatency;
+        if (!std::strcmp(key, "low-detail")) return cfg.lowDetail;
+        return Mod::get()->getSettingValue<bool>(key);
+    }
+
+    static bool controlledByPreset(char const* key) {
+        return !std::strcmp(key, "skip-idle-particles") || !std::strcmp(key, "cap-particles");
+    }
+
+    // Puts a node at the center of `box` (popup coordinates, origin = lower left corner).
+    static CCPoint centerOf(minimum::Box const& box, CCSize const& popup) {
+        return ccp(box.x + box.w / 2.f - popup.width / 2.f, box.y + box.h / 2.f - popup.height / 2.f);
+    }
+
+    static void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
+        float const natural = label->getContentSize().width;
+        label->setScale(natural > 0.f ? std::min(maxScale, room / natural) : maxScale);
+    }
 
     bool init() {
-        // ---- The quick toggles -------------------------------------------------------------
-        struct ToggleDef {
-            char const* key;
-            char const* label;
-        };
-        std::vector<ToggleDef> toggles = {
+        // Make sure the numbers shown below are current.
+        minimum::refreshConfig();
+
+        m_toggles = {
             {"mod-enabled", "Minimum"},
             {"show-stats", "FPS counter"},
-            {"skip-idle-particles", "Skip idle particles"},
-            {"cap-particles", "Particle cap"},
+            {"skip-idle-particles", "Skip idle draws"},
+            {"cap-particles", "Cap particles"},
             {"low-latency", "Low latency"},
+            {"low-detail", "Low detail"},
         };
-#ifdef GEODE_IS_MOBILE
-        toggles.push_back({"fps-unlock", "Unlock FPS"});
-#endif
 
-        // ---- Layout: header, one full-width row per toggle, footer -------------------------
-        size_t const count = toggles.size();
-        float const width = 320.f;
-        float const headerH = 62.f;
-        float const rowH = 32.f;
-        float const footerH = 78.f;
-        float const height = headerH + rowH * static_cast<float>(count) + footerH;
+        auto const win = CCDirector::get()->getWinSize();
+        auto const plan = minimum::planPopup(win.height - 16.f, m_toggles.size(), 4);
+        CCSize const size{plan.width, plan.height};
 
-        if (!Popup::init(width, height, "square01_001.png")) return false;
-
+        if (!Popup::init(plan.width, plan.height, "square01_001.png")) return false;
         this->setTitle("Minimum");
-        m_title->setPositionY(m_title->getPositionY() + 4.f);
 
-        // Logo next to the title.
-        m_mainLayer->addChildAtPosition(makeLogo(30.f), Anchor::TopLeft, ccp(16.f, -20.f));
+        // Logo, top right, level with the title (the close button lives in the top left).
+        m_mainLayer->addChildAtPosition(makeLogo(32.f), Anchor::TopRight, ccp(-28.f, -23.f));
 
-        // Live FPS, top right. Colored like the corner stats line.
-        m_fpsLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_fpsLabel->setScale(.42f);
-        m_mainLayer->addChildAtPosition(m_fpsLabel, Anchor::TopRight, ccp(-16.f, -24.f), ccp(1.f, .5f));
-
-        // Version, centered under the title.
-        auto* version = CCLabelBMFont::create("v3.2.1", "chatFont.fnt");
-        version->setScale(.55f);
-        version->setOpacity(140);
-        m_mainLayer->addChildAtPosition(version, Anchor::Top, ccp(0.f, -44.f));
-
-        // ---- Toggle rows: card, label left, switch right ------------------------------------
-        auto* mod = Mod::get();
-        float const rowsTop = height / 2.f - headerH;
-        for (size_t i = 0; i < count; ++i) {
-            float const cy = rowsTop - rowH * (static_cast<float>(i) + .5f);
-
-            if (auto* panel = makePanel(width - 28.f, 26.f)) {
-                m_mainLayer->addChildAtPosition(panel, Anchor::Center, ccp(0.f, cy));
+        // ---- Live card -----------------------------------------------------------------------
+        {
+            auto const c = centerOf(plan.live, size);
+            if (auto* panel = makePanel(plan.live.w, plan.live.h, kLiveOpacity)) {
+                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, c);
             }
 
-            auto* label = CCLabelBMFont::create(toggles[i].label, "bigFont.fnt");
-            float const room = width - 28.f - 76.f;
-            float const natural = label->getContentSize().width;
-            label->setScale(natural > 0.f ? std::min(.4f, room / natural) : .4f);
-            m_mainLayer->addChildAtPosition(
-                label, Anchor::Center, ccp(-(width / 2.f - 26.f), cy), ccp(0.f, .5f)
-            );
+            float const left = c.x - plan.live.w / 2.f;
+            m_fpsLabel = CCLabelBMFont::create("--", "bigFont.fnt");
+            m_fpsLabel->setScale(.85f);
+            m_buttonMenu->addChildAtPosition(m_fpsLabel, Anchor::Center, ccp(left + 62.f, c.y + 5.f));
 
-            auto* toggler = CCMenuItemToggler::createWithStandardSprites(
-                this, menu_selector(MinimumPopup::onToggle), .5f
-            );
-            toggler->setTag(static_cast<int>(i));
-            toggler->toggle(mod->getSettingValue<bool>(toggles[i].key));
-            m_buttonMenu->addChildAtPosition(
-                toggler, Anchor::Center, ccp(width / 2.f - 34.f, cy)
-            );
+            auto* caption = CCLabelBMFont::create("FPS", "goldFont.fnt");
+            caption->setScale(.4f);
+            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(left + 62.f, c.y - plan.live.h / 2.f + 11.f));
 
-            m_keys.push_back(toggles[i].key);
-            m_togglers.push_back(toggler);
+            float const right = c.x + plan.live.w / 2.f;
+            m_lowLabel = CCLabelBMFont::create("1% low --", "chatFont.fnt");
+            m_lowLabel->setScale(.8f);
+            m_buttonMenu->addChildAtPosition(m_lowLabel, Anchor::Center, ccp(right - 14.f, c.y + 8.f), ccp(1.f, .5f));
+
+            m_frameLabel = CCLabelBMFont::create("frame -- ms", "chatFont.fnt");
+            m_frameLabel->setScale(.8f);
+            m_frameLabel->setOpacity(190);
+            m_buttonMenu->addChildAtPosition(m_frameLabel, Anchor::Center, ccp(right - 14.f, c.y - 8.f), ccp(1.f, .5f));
         }
 
-        // ---- Buttons -----------------------------------------------------------------------
-        float const buttonY = rowsTop - rowH * static_cast<float>(count) - 22.f;
+        // ---- Presets -------------------------------------------------------------------------
+        for (size_t i = 0; i < plan.presets.size() && i < 4; ++i) {
+            auto const& box = plan.presets[i];
 
-        auto* settingsSpr = ButtonSprite::create("Settings", "goldFont.fnt", "GJ_button_01.png", .7f);
-        auto* settingsBtn = CCMenuItemSpriteExtra::create(
-            settingsSpr, this, menu_selector(MinimumPopup::onAllSettings)
-        );
-        m_buttonMenu->addChildAtPosition(settingsBtn, Anchor::Center, ccp(-52.f, buttonY));
+            auto* holder = CCNode::create();
+            holder->setContentSize({box.w, box.h});
 
-        auto* githubSpr = ButtonSprite::create("GitHub", "goldFont.fnt", "GJ_button_02.png", .7f);
-        auto* githubBtn = CCMenuItemSpriteExtra::create(
-            githubSpr, this, menu_selector(MinimumPopup::onGitHub)
-        );
-        m_buttonMenu->addChildAtPosition(githubBtn, Anchor::Center, ccp(52.f, buttonY));
+            auto* background = makePanel(box.w, box.h, kPresetOpacity);
+            if (background) {
+                background->setPosition({box.w / 2.f, box.h / 2.f});
+                holder->addChild(background);
+            }
+            auto* label = CCLabelBMFont::create(kPresetNames[i], "bigFont.fnt");
+            fitLabel(label, .4f, box.w - 12.f);
+            label->setPosition({box.w / 2.f, box.h / 2.f + 1.f});
+            holder->addChild(label);
 
-        // ---- Credits -----------------------------------------------------------------------
-        auto* credits = CCLabelBMFont::create(
-            "by ziyyhhk  |  helper: Rafa  |  testers: Broken Team", "chatFont.fnt"
-        );
-        credits->setScale(.5f);
-        credits->setOpacity(160);
-        m_mainLayer->addChildAtPosition(credits, Anchor::Bottom, ccp(0.f, 14.f));
+            auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(MinimumPopup::onPreset));
+            button->setTag(static_cast<int>(i));
+            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(box, size));
 
-        this->tick(0.f);
-        this->schedule(schedule_selector(MinimumPopup::tick), 0.5f);
+            m_presetButtons.push_back({background, kPresetNames[i]});
+        }
+        this->syncPresetButtons();
+
+        // ---- Quick toggles: one card each ---------------------------------------------------
+        for (size_t i = 0; i < m_toggles.size(); ++i) {
+            auto const& box = plan.toggles[i];
+            auto const c = centerOf(box, size);
+            float const left = c.x - box.w / 2.f;
+
+            // Card first, so it is drawn behind the toggle and the label.
+            if (auto* panel = makePanel(box.w, box.h)) {
+                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, c);
+            }
+
+            auto* toggler = CCMenuItemToggler::createWithStandardSprites(
+                this, menu_selector(MinimumPopup::onToggle), .55f
+            );
+            toggler->setTag(static_cast<int>(i));
+            toggler->toggle(effectiveValue(m_toggles[i].key));
+            m_buttonMenu->addChildAtPosition(toggler, Anchor::Center, ccp(left + 20.f, c.y));
+            m_togglers.push_back(toggler);
+
+            // Label: as large as fits inside the card.
+            auto* label = CCLabelBMFont::create(m_toggles[i].label, "bigFont.fnt");
+            fitLabel(label, .45f, box.w - 38.f - 8.f);
+            m_buttonMenu->addChildAtPosition(label, Anchor::Center, ccp(left + 38.f, c.y), ccp(0.f, .5f));
+        }
+
+        // ---- Full settings ------------------------------------------------------------------
+        {
+            auto* sprite = ButtonSprite::create("All Settings", "goldFont.fnt", "GJ_button_01.png", .8f);
+            sprite->setScale(.75f);
+            auto* button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(MinimumPopup::onAllSettings));
+            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(plan.settingsButton, size));
+        }
+
+        // ---- Credits (one line) -------------------------------------------------------------
+        {
+            std::string const line = std::string("by ") + kDeveloper + "  |  helper " + kHelper
+                                   + "  |  testers " + kTesters;
+            auto* text = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
+            fitLabel(text, .6f, plan.credits.w);
+            text->setOpacity(170);
+            m_buttonMenu->addChildAtPosition(text, Anchor::Center, centerOf(plan.credits, size));
+        }
+
+        this->refreshLive(0.f);
+        this->schedule(schedule_selector(MinimumPopup::refreshLive), 0.25f);
         return true;
     }
 
-    void tick(float) {
+    // Live numbers, refreshed four times a second while the popup is open.
+    void refreshLive(float) {
         if (!m_fpsLabel) return;
-        uint32_t const fps = minimum::counters().fps.load();
+        auto const& cfg = minimum::config();
+        auto& counters = minimum::counters();
+        auto& stats = minimum::frameStats();
 
-        char text[24];
-        std::snprintf(text, sizeof(text), "%u FPS", fps);
-        m_fpsLabel->setString(text);
+        uint32_t const fps = counters.fps.load();
+        char buffer[48];
 
-        if (fps >= 55) m_fpsLabel->setColor(ccc3(120, 255, 120));
-        else if (fps >= 30) m_fpsLabel->setColor(ccc3(255, 225, 90));
-        else m_fpsLabel->setColor(ccc3(255, 100, 100));
+        if (fps == 0) std::snprintf(buffer, sizeof(buffer), "--");
+        else std::snprintf(buffer, sizeof(buffer), "%u", fps);
+        if (m_lastFps != buffer) {
+            m_lastFps = buffer;
+            m_fpsLabel->setString(buffer);
+        }
+        switch (minimum::classifyFps(fps, cfg.targetFps)) {
+            case minimum::FpsBand::Good: m_fpsLabel->setColor(ccc3(120, 255, 120)); break;
+            case minimum::FpsBand::Okay: m_fpsLabel->setColor(ccc3(255, 225, 90)); break;
+            case minimum::FpsBand::Bad: m_fpsLabel->setColor(ccc3(255, 100, 100)); break;
+        }
+
+        double const low = stats.lowFps(240);
+        if (low > 0.5) std::snprintf(buffer, sizeof(buffer), "1%% low %u", static_cast<uint32_t>(low + 0.5));
+        else std::snprintf(buffer, sizeof(buffer), "1%% low --");
+        if (m_lastLow != buffer) {
+            m_lastLow = buffer;
+            m_lowLabel->setString(buffer);
+        }
+
+        double const frameMs = stats.averageFrameMs(60);
+        if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
+        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms", frameMs);
+        else std::snprintf(buffer, sizeof(buffer), "frame -- ms");
+        if (m_lastFrame != buffer) {
+            m_lastFrame = buffer;
+            m_frameLabel->setString(buffer);
+        }
+    }
+
+    void syncPresetButtons() {
+        auto const current = Mod::get()->getSettingValue<std::string>("preset");
+        for (auto const& button : m_presetButtons) {
+            if (!button.background) continue;
+            bool const selected = current == button.name;
+            button.background->setColor(selected ? ccc3(255, 200, 60) : ccc3(255, 255, 255));
+            button.background->setOpacity(selected ? kPresetSelectedOpacity : kPresetOpacity);
+        }
+    }
+
+    void syncTogglers() {
+        for (size_t i = 0; i < m_togglers.size(); ++i) {
+            m_togglers[i]->toggle(effectiveValue(m_toggles[i].key));
+        }
+    }
+
+    void onPreset(CCObject* sender) {
+        int const index = static_cast<CCNode*>(sender)->getTag();
+        if (index < 0 || index >= 4) return;
+
+        if (index == 0) {
+            // "Custom" keeps what the previous preset was doing instead of snapping back to
+            // whatever the individual settings happened to say.
+            minimum::leavePreset();
+        }
+        else {
+            Mod::get()->setSettingValue<std::string>("preset", kPresetNames[index]);
+            minimum::refreshConfig();
+        }
+        this->syncPresetButtons();
+        this->syncTogglers();
     }
 
     void onToggle(CCObject* sender) {
         auto* toggler = static_cast<CCMenuItemToggler*>(sender);
         size_t const index = static_cast<size_t>(toggler->getTag());
-        if (index >= m_keys.size()) return;
+        if (index >= m_toggles.size()) return;
+        char const* key = m_toggles[index].key;
+
+        // A preset would silently undo this click on the next refresh, so step out of it first.
+        if (controlledByPreset(key)) {
+            minimum::leavePreset();
+            this->syncPresetButtons();
+        }
 
         // Flip from the stored setting (the source of truth), not from the toggler state:
         // the toggler reports its old state inside its own callback.
         auto* mod = Mod::get();
-        bool const next = !mod->getSettingValue<bool>(m_keys[index]);
-        mod->setSettingValue<bool>(m_keys[index], next);
+        bool const next = !mod->getSettingValue<bool>(key);
+        mod->setSettingValue<bool>(key, next);
         minimum::refreshConfig();
-
-        // Sync the visual state: the callback fired before the toggler flipped itself,
-        // so force it to match the value we just stored.
-        if (index < m_togglers.size()) m_togglers[index]->toggle(next);
     }
 
     void onAllSettings(CCObject*) {
         this->onClose(nullptr);
         openSettingsPopup(Mod::get(), true);
-    }
-
-    void onGitHub(CCObject*) {
-        web::openLinkInBrowser("https://github.com/ziyyhhk/Minimum");
     }
 
 public:

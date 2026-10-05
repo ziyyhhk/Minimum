@@ -1,22 +1,21 @@
-# Minimum v3.2.1
+# Minimum
 
-Lightweight performance mod for PC, Mac, Android and iOS.
+Makes Geometry Dash run smoother on PC, Mac, Android and iOS.
 
-- **Pause menu button:** tap the logo in the pause menu for quick toggles, a live FPS readout and the settings. It steps aside if another button is in its spot, and you can move it to another corner
-- Real FPS counter (green / yellow / red)
-- Skips particle draws that render nothing, caps particle pools, optional adaptive cap
-- Low Latency Mode on all platforms (off by default): input can reach the screen sooner, but it can cost FPS on a GPU limited device
-- Unlock FPS on Android / iOS: use your 90/120 Hz screen
-- Windows: frame pacing tweaks, background throttle, tab-out volume, fast alt-tab, optional Draw Divide
+Open the pause menu and tap the Minimum logo. You get a live FPS card, quick presets and the main toggles in one place.
 
-Visual only. Never touches gameplay, physics or timing.
+- Skips drawing particle systems that are idle and caps how many particles a level can spawn
+- Live FPS counter with 1% low, so you can see stutter and not just the average
+- Low Latency Mode and Low Detail Mode, on every platform
+- Android 13+: CPU speed hint for steadier frames
+- Windows: background throttle, tab-out volume, fast alt-tab, 1 ms timer, optional Draw Divide
 
-Do not use Draw Divide together with `mat.draw-divide`.
+Only changes how the game is drawn. Gameplay, physics and timing are never touched.
+
+Don't use Draw Divide together with `mat.draw-divide`, both hook the same function.
 
 ## Credits
 
-- **Developer:** ziyyhhk
-- **Helper:** Rafa
-- **Testers:** Rafa, Broken Team, ziyyhhk
+Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk.
 
-Draw Divide concept by qimiko / mat. Algebra Dash by ConfiG. Geode team.
+Draw Divide idea by qimiko / mat. Algebra Dash by ConfiG. Thanks to the Geode team.

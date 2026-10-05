@@ -18,6 +18,7 @@ namespace minimum {
     namespace {
         Config g_config;
         Counters g_counters;
+        FrameStats g_frameStats;
         std::chrono::steady_clock::time_point g_lastRefresh{};
         std::chrono::steady_clock::time_point g_lastFocusCheck{};
         bool g_focused = true;
@@ -38,30 +39,17 @@ namespace minimum {
         }
 #endif
 
-        // Presets only touch the settings that trade quality for speed.
-        // "Custom" leaves every individual setting alone.
-        void applyPreset(std::string const& preset, Config& c) {
-            if (preset == "Balanced") {
-                c.skipIdleParticles = true;
-                c.capParticles = true;
-                c.particleCap = 256;
-                c.backgroundThrottle = true;
-                c.backgroundFps = 30.0;
-            }
-            else if (preset == "Performance") {
-                c.skipIdleParticles = true;
-                c.capParticles = true;
-                c.particleCap = 128;
-                c.backgroundThrottle = true;
-                c.backgroundFps = 20.0;
-            }
-            else if (preset == "Extreme") {
-                c.skipIdleParticles = true;
-                c.capParticles = true;
-                c.particleCap = 48;
-                c.backgroundThrottle = true;
-                c.backgroundFps = 10.0;
-            }
+        // A preset only touches the settings that trade quality for speed. "Custom" leaves
+        // every individual setting alone. The numbers live in minimum_logic.hpp.
+        void applyPreset(PresetValues const& preset, Config& c) {
+            if (!preset.known) return;
+            c.skipIdleParticles = true;
+            c.capParticles = true;
+            c.particleCap = preset.particleCap;
+#ifdef GEODE_IS_WINDOWS
+            c.backgroundThrottle = true;
+            c.backgroundFps = preset.backgroundFps;
+#endif
         }
     }
 
@@ -71,6 +59,10 @@ namespace minimum {
 
     Counters& counters() {
         return g_counters;
+    }
+
+    FrameStats& frameStats() {
+        return g_frameStats;
     }
 
     void refreshConfig() {
@@ -85,7 +77,7 @@ namespace minimum {
         c.particleCap = static_cast<unsigned int>(std::clamp<int64_t>(cap, 4, 1000));
         c.adaptiveCap = mod->getSettingValue<bool>("adaptive-cap");
         int64_t targetFps = mod->getSettingValue<int64_t>("adaptive-target-fps");
-        c.adaptiveTargetFps = static_cast<double>(std::clamp<int64_t>(targetFps, 20, 360));
+        c.targetFps = static_cast<double>(std::clamp<int64_t>(targetFps, 20, 360));
 
         c.spikeLogger = mod->getSettingValue<bool>("spike-logger");
         int64_t spikeMs = mod->getSettingValue<int64_t>("spike-threshold-ms");
@@ -98,6 +90,15 @@ namespace minimum {
         c.hudScale = static_cast<float>(std::clamp(hudScale, 0.2, 2.0));
         int64_t hudOpacity = mod->getSettingValue<int64_t>("hud-opacity");
         c.hudOpacity = static_cast<uint8_t>(std::clamp<int64_t>(hudOpacity, 20, 255));
+
+        c.lowLatency = mod->getSettingValue<bool>("low-latency");
+        c.lowDetail = mod->getSettingValue<bool>("low-detail");
+
+#ifdef GEODE_IS_ANDROID
+        c.androidCpuHint = mod->getSettingValue<bool>("android-cpu-hint");
+#else
+        c.androidCpuHint = false;
+#endif
 
 #ifdef GEODE_IS_WINDOWS
         // Windows only settings
@@ -126,24 +127,28 @@ namespace minimum {
         c.fastAltTab = false;
 #endif
 
-        // All platforms.
-        c.lowLatency = mod->getSettingValue<bool>("low-latency");
-
-#ifdef GEODE_IS_MOBILE
-        c.fpsUnlock = mod->getSettingValue<bool>("fps-unlock");
-        int64_t fpsLimit = mod->getSettingValue<int64_t>("fps-limit");
-        c.fpsLimit = static_cast<double>(std::clamp<int64_t>(fpsLimit, 30, 480));
-#else
-        c.fpsUnlock = false;
-#endif
-
-        applyPreset(mod->getSettingValue<std::string>("preset"), c);
-#ifndef GEODE_IS_WINDOWS
-        c.backgroundThrottle = false;
-#endif
+        applyPreset(presetValues(mod->getSettingValue<std::string>("preset")), c);
 
         g_config = c;
         applySystemTuning();
+    }
+
+    void leavePreset() {
+        auto* mod = Mod::get();
+        auto const preset = presetValues(mod->getSettingValue<std::string>("preset"));
+        if (!preset.known) return;
+
+        // Copy what the preset was doing into the real settings first, so nothing changes
+        // for the player at the moment the preset is dropped.
+        mod->setSettingValue<bool>("skip-idle-particles", true);
+        mod->setSettingValue<bool>("cap-particles", true);
+        mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(preset.particleCap));
+#ifdef GEODE_IS_WINDOWS
+        mod->setSettingValue<bool>("background-throttle", true);
+        mod->setSettingValue<int64_t>("background-fps", static_cast<int64_t>(preset.backgroundFps));
+#endif
+        mod->setSettingValue<std::string>("preset", "Custom");
+        refreshConfig();
     }
 
     void refreshConfigIfDue(std::chrono::steady_clock::time_point now) {

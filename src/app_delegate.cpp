@@ -1,28 +1,41 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/AppDelegate.hpp>
 #include <minimum.hpp>
+
+#ifdef GEODE_IS_WINDOWS
+#include <Geode/modify/AppDelegate.hpp>
 
 using namespace geode::prelude;
 
-// Fast Alt Tab (Windows).
+// Fast alt-tab (Windows only): skip the save that the game does when the window
+// loses focus (it freezes the game for a moment on big save files). Saving when a
+// level is exited or the game is closed is NOT touched.
 //
-// When the game window loses focus, GD writes a full save of all local data.
-// That write is big enough to feel as a stutter when you alt-tab out and back
-// in. The focus-loss save comes in through trySaveGame(true); the saves that
-// protect your progress (level exit, closing the game) come in with false and
-// are left alone.
-//
-// Deliberately not offered on mobile: there the background save is the only
-// thing that keeps your progress when the OS kills the app.
+// Deliberately NOT built for Android / iOS: there the OS can kill the app right
+// after it goes to the background, and that save is the one that keeps your progress.
 
-class $modify(MinimumAppDelegate, AppDelegate) {
-    void trySaveGame(bool focusLoss) {
-#ifdef GEODE_IS_WINDOWS
+namespace {
+    bool g_insideBackgroundCall = false;
+}
+
+struct AppFocusHooks : Modify<AppFocusHooks, AppDelegate> {
+    void applicationDidEnterBackground() {
+        g_insideBackgroundCall = true;
+        AppDelegate::applicationDidEnterBackground();
+        g_insideBackgroundCall = false;
+    }
+
+    void trySaveGame(bool force) {
         auto const& cfg = minimum::config();
-        if (cfg.enabled && cfg.fastAltTab && focusLoss) {
+        if (cfg.enabled && cfg.fastAltTab && g_insideBackgroundCall) {
             return;
         }
-#endif
-        AppDelegate::trySaveGame(focusLoss);
+        AppDelegate::trySaveGame(force);
+    }
+
+    static void onModify(auto& self) {
+        // Run before other mods' trySaveGame hooks so the skip really skips.
+        (void)self.setHookPriority("AppDelegate::trySaveGame", -9999);
     }
 };
+
+#endif
