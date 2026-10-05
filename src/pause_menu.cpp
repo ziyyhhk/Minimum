@@ -2,8 +2,10 @@
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
+#include <Geode/utils/web.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <minimum.hpp>
@@ -25,18 +27,8 @@ using namespace geode::prelude;
 
 namespace {
 
-    // Credits shown in the popup.
-    constexpr char const* kDeveloper = "ziyyhhk";
-    constexpr char const* kHelper = "Rafa";
-    constexpr char const* kTesters = "Rafa, Broken Team, ziyyhhk";
-
-    // ---- Look of the popup. Change the numbers here to restyle it. -------------------------
-    constexpr float kPopupWidth = 360.f;
-    constexpr float kCellWidth = 156.f;   // one toggle "card"
-    constexpr float kCellHeight = 30.f;
-    constexpr float kColumnOffset = 84.f; // distance of the two card columns from the center
-    constexpr float kRowPitch = 36.f;
-    constexpr uint8_t kPanelOpacity = 26; // cards and credits box, over the black popup (0-255)
+    // ---- Look of the popup ----------------------------------------------------------------
+    constexpr uint8_t kPanelOpacity = 26; // toggle cards, over the black popup (0-255)
 
     // ---- The pause menu button ------------------------------------------------------------
     constexpr float kButtonSize = 36.f;
@@ -198,10 +190,12 @@ namespace {
 
 class MinimumPopup : public Popup {
 protected:
-    std::vector<char const*> m_keys;
+    std::vector<std::string> m_keys;
+    std::vector<CCMenuItemToggler*> m_togglers;
+    CCLabelBMFont* m_fpsLabel = nullptr;
 
     bool init() {
-        // ---- What the quick toggles are ----------------------------------------------------
+        // ---- The quick toggles -------------------------------------------------------------
         struct ToggleDef {
             char const* key;
             char const* label;
@@ -210,90 +204,110 @@ protected:
             {"mod-enabled", "Minimum"},
             {"show-stats", "FPS counter"},
             {"skip-idle-particles", "Skip idle particles"},
-            {"cap-particles", "Cap particles"},
+            {"cap-particles", "Particle cap"},
+            {"low-latency", "Low latency"},
         };
-#ifdef GEODE_IS_DESKTOP
-        toggles.push_back({"low-latency", "Low latency"});
+#ifdef GEODE_IS_MOBILE
+        toggles.push_back({"fps-unlock", "Unlock FPS"});
 #endif
 
-        // The popup grows with the number of rows (3 on desktop, 2 on mobile).
+        // ---- Layout: header, one full-width row per toggle, footer -------------------------
         size_t const count = toggles.size();
-        int const rows = static_cast<int>((count + 1) / 2);
-        float const height = 170.f + kRowPitch * static_cast<float>(rows);
+        float const width = 320.f;
+        float const headerH = 62.f;
+        float const rowH = 32.f;
+        float const footerH = 78.f;
+        float const height = headerH + rowH * static_cast<float>(count) + footerH;
 
-        if (!Popup::init(kPopupWidth, height, "square01_001.png")) return false;
+        if (!Popup::init(width, height, "square01_001.png")) return false;
 
         this->setTitle("Minimum");
+        m_title->setPositionY(m_title->getPositionY() + 4.f);
 
-        // Logo, top right, level with the title (the close button lives in the top left).
-        m_mainLayer->addChildAtPosition(makeLogo(32.f), Anchor::TopRight, ccp(-28.f, -23.f));
+        // Logo next to the title.
+        m_mainLayer->addChildAtPosition(makeLogo(30.f), Anchor::TopLeft, ccp(16.f, -20.f));
 
-        // All y values below are measured from the center of the popup.
-        float const firstRowY = height / 2.f - 62.f;
-        auto rowY = [&](int row) { return firstRowY - kRowPitch * static_cast<float>(row); };
+        // Live FPS, top right. Colored like the corner stats line.
+        m_fpsLabel = CCLabelBMFont::create("", "goldFont.fnt");
+        m_fpsLabel->setScale(.42f);
+        m_mainLayer->addChildAtPosition(m_fpsLabel, Anchor::TopRight, ccp(-16.f, -24.f), ccp(1.f, .5f));
 
-        // ---- Quick toggles: one card each --------------------------------------------------
+        // Version, centered under the title.
+        auto* version = CCLabelBMFont::create("v3.2.1", "chatFont.fnt");
+        version->setScale(.55f);
+        version->setOpacity(140);
+        m_mainLayer->addChildAtPosition(version, Anchor::Top, ccp(0.f, -44.f));
+
+        // ---- Toggle rows: card, label left, switch right ------------------------------------
         auto* mod = Mod::get();
+        float const rowsTop = height / 2.f - headerH;
         for (size_t i = 0; i < count; ++i) {
-            bool const alone = (i + 1 == count) && (count % 2 == 1);
-            float const cx = alone ? 0.f : (i % 2 == 0 ? -kColumnOffset : kColumnOffset);
-            float const cy = rowY(static_cast<int>(i / 2));
-            float const left = cx - kCellWidth / 2.f;
+            float const cy = rowsTop - rowH * (static_cast<float>(i) + .5f);
 
-            // Card first, so it is drawn behind the toggle and the label.
-            if (auto* panel = makePanel(kCellWidth, kCellHeight)) {
-                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(cx, cy));
+            if (auto* panel = makePanel(width - 28.f, 26.f)) {
+                m_mainLayer->addChildAtPosition(panel, Anchor::Center, ccp(0.f, cy));
             }
 
+            auto* label = CCLabelBMFont::create(toggles[i].label, "bigFont.fnt");
+            float const room = width - 28.f - 76.f;
+            float const natural = label->getContentSize().width;
+            label->setScale(natural > 0.f ? std::min(.4f, room / natural) : .4f);
+            m_mainLayer->addChildAtPosition(
+                label, Anchor::Center, ccp(-(width / 2.f - 26.f), cy), ccp(0.f, .5f)
+            );
+
             auto* toggler = CCMenuItemToggler::createWithStandardSprites(
-                this, menu_selector(MinimumPopup::onToggle), .55f
+                this, menu_selector(MinimumPopup::onToggle), .5f
             );
             toggler->setTag(static_cast<int>(i));
             toggler->toggle(mod->getSettingValue<bool>(toggles[i].key));
-            m_buttonMenu->addChildAtPosition(toggler, Anchor::Center, ccp(left + 20.f, cy));
-
-            // Label: as large as fits inside the card.
-            auto* label = CCLabelBMFont::create(toggles[i].label, "bigFont.fnt");
-            float const room = kCellWidth - 38.f - 8.f;
-            float const natural = label->getContentSize().width;
-            label->setScale(natural > 0.f ? std::min(.45f, room / natural) : .45f);
-            m_buttonMenu->addChildAtPosition(label, Anchor::Center, ccp(left + 38.f, cy), ccp(0.f, .5f));
+            m_buttonMenu->addChildAtPosition(
+                toggler, Anchor::Center, ccp(width / 2.f - 34.f, cy)
+            );
 
             m_keys.push_back(toggles[i].key);
+            m_togglers.push_back(toggler);
         }
 
-        // ---- Full settings -----------------------------------------------------------------
-        float const buttonY = rowY(rows - 1) - 40.f;
-        auto* settingsSpr = ButtonSprite::create("All Settings", "goldFont.fnt", "GJ_button_01.png", .8f);
-        settingsSpr->setScale(.8f);
+        // ---- Buttons -----------------------------------------------------------------------
+        float const buttonY = rowsTop - rowH * static_cast<float>(count) - 22.f;
+
+        auto* settingsSpr = ButtonSprite::create("Settings", "goldFont.fnt", "GJ_button_01.png", .7f);
         auto* settingsBtn = CCMenuItemSpriteExtra::create(
             settingsSpr, this, menu_selector(MinimumPopup::onAllSettings)
         );
-        m_buttonMenu->addChildAtPosition(settingsBtn, Anchor::Center, ccp(0.f, buttonY));
+        m_buttonMenu->addChildAtPosition(settingsBtn, Anchor::Center, ccp(-52.f, buttonY));
+
+        auto* githubSpr = ButtonSprite::create("GitHub", "goldFont.fnt", "GJ_button_02.png", .7f);
+        auto* githubBtn = CCMenuItemSpriteExtra::create(
+            githubSpr, this, menu_selector(MinimumPopup::onGitHub)
+        );
+        m_buttonMenu->addChildAtPosition(githubBtn, Anchor::Center, ccp(52.f, buttonY));
 
         // ---- Credits -----------------------------------------------------------------------
-        float const creditsTop = buttonY - 23.f;
-        if (auto* panel = makePanel(kPopupWidth - 36.f, 66.f)) {
-            m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(0.f, creditsTop - 33.f));
-        }
+        auto* credits = CCLabelBMFont::create(
+            "by ziyyhhk  |  helper: Rafa  |  testers: Broken Team", "chatFont.fnt"
+        );
+        credits->setScale(.5f);
+        credits->setOpacity(160);
+        m_mainLayer->addChildAtPosition(credits, Anchor::Bottom, ccp(0.f, 14.f));
 
-        auto* creditsTitle = CCLabelBMFont::create("Credits", "goldFont.fnt");
-        creditsTitle->setScale(.5f);
-        m_mainLayer->addChildAtPosition(creditsTitle, Anchor::Center, ccp(0.f, creditsTop - 10.f));
-
-        float y = creditsTop - 26.f;
-        for (auto const& line : {
-            std::string("Developer: ") + kDeveloper,
-            std::string("Helper: ") + kHelper,
-            std::string("Testers: ") + kTesters,
-        }) {
-            auto* text = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
-            text->setScale(.7f);
-            m_mainLayer->addChildAtPosition(text, Anchor::Center, ccp(0.f, y));
-            y -= 14.f;
-        }
-
+        this->tick(0.f);
+        this->schedule(schedule_selector(MinimumPopup::tick), 0.5f);
         return true;
+    }
+
+    void tick(float) {
+        if (!m_fpsLabel) return;
+        uint32_t const fps = minimum::counters().fps.load();
+
+        char text[24];
+        std::snprintf(text, sizeof(text), "%u FPS", fps);
+        m_fpsLabel->setString(text);
+
+        if (fps >= 55) m_fpsLabel->setColor(ccc3(120, 255, 120));
+        else if (fps >= 30) m_fpsLabel->setColor(ccc3(255, 225, 90));
+        else m_fpsLabel->setColor(ccc3(255, 100, 100));
     }
 
     void onToggle(CCObject* sender) {
@@ -307,11 +321,19 @@ protected:
         bool const next = !mod->getSettingValue<bool>(m_keys[index]);
         mod->setSettingValue<bool>(m_keys[index], next);
         minimum::refreshConfig();
+
+        // Sync the visual state: the callback fired before the toggler flipped itself,
+        // so force it to match the value we just stored.
+        if (index < m_togglers.size()) m_togglers[index]->toggle(next);
     }
 
     void onAllSettings(CCObject*) {
         this->onClose(nullptr);
         openSettingsPopup(Mod::get(), true);
+    }
+
+    void onGitHub(CCObject*) {
+        web::openLinkInBrowser("https://github.com/ziyyhhk/Minimum");
     }
 
 public:

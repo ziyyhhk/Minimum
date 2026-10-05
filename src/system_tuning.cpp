@@ -3,110 +3,96 @@
 
 #ifdef GEODE_IS_WINDOWS
 #include <Windows.h>
-#include <timeapi.h>
-#pragma comment(lib, "winmm.lib")
 #endif
 
 using namespace geode::prelude;
 
-// System tuning (Windows)
+// Windows system tuning.
 //
-// Frame pacing problems that are not the game's fault usually come from the OS:
+// Three small things, all applied only when the wanted state differs from the
+// state we last applied (refreshConfig calls us twice a second, so this must
+// be cheap):
 //
-//   * Timer resolution. By default Windows wakes sleeping threads every ~15.6 ms.
-//     When the game waits for the next frame it can oversleep by that much, which
-//     shows up as uneven frame times. timeBeginPeriod(1) asks for 1 ms wakeups
-//     (per process on Windows 10 2004+ and 11).
-//   * Power throttling (EcoQoS). Windows can silently put a process on efficiency
-//     cores / low clocks. We opt the game process out of that.
-//   * Process priority. Optional. Above Normal is safe, High can starve OBS or
-//     Discord, so it is off by default. Realtime is deliberately not offered.
+//   * Timer resolution: Windows wakes sleeping threads every ~15.6 ms by
+//     default. Asking for 1 ms wakeups makes the game's frame waits land on
+//     time, which evens out frame pacing. Done through NtSetTimerResolution
+//     (looked up at runtime) so there is no winmm link dependency.
 //
-// Every call is undone when the setting is switched off.
+//   * Power throttling (EcoQoS): Windows 11 is allowed to move background-ish
+//     processes to efficiency cores and lower clocks. Opt the game out while
+//     the setting is on.
+//
+//   * Process priority: plain SetPriorityClass. "Above Normal" is the safe
+//     one; "High" is there for people who know they want it.
 
 namespace minimum {
 
 #ifdef GEODE_IS_WINDOWS
 
     namespace {
+        // -1 = not applied yet, so the first call always applies.
+        int g_timerApplied = -1;
+        int g_throttleApplied = -1;
+        int g_priorityApplied = -1;
 
-        // Same layout as PROCESS_POWER_THROTTLING_STATE. Declared here so the mod does
-        // not depend on the Windows SDK version Geode happens to build with.
-        struct PowerThrottlingState {
-            ULONG version;
-            ULONG controlMask;
-            ULONG stateMask;
-        };
+        void setTimerResolution(bool enable) {
+            int const wanted = enable ? 1 : 0;
+            if (wanted == g_timerApplied) return;
 
-        constexpr ULONG kPowerThrottlingVersion = 1;
-        constexpr ULONG kPowerThrottlingExecutionSpeed = 0x1;
-        constexpr int kProcessPowerThrottling = 4; // PROCESS_INFORMATION_CLASS::ProcessPowerThrottling
+            using NtSetTimerResolutionFn = LONG(NTAPI*)(ULONG, BOOLEAN, PULONG);
+            static NtSetTimerResolutionFn const fn = [] {
+                HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+                if (!ntdll) return NtSetTimerResolutionFn(nullptr);
+                return reinterpret_cast<NtSetTimerResolutionFn>(reinterpret_cast<void*>(
+                    GetProcAddress(ntdll, "NtSetTimerResolution")
+                ));
+            }();
+            if (!fn) return;
 
-        using SetProcessInformationFn = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
-
-        bool g_timerApplied = false;
-        bool g_throttleOptOutApplied = false;
-        ProcessPriority g_priorityApplied = ProcessPriority::Normal;
-
-        void setPowerThrottlingOptOut(bool optOut) {
-            HMODULE kernel = GetModuleHandleA("kernel32.dll");
-            if (!kernel) return;
-            auto fn = reinterpret_cast<SetProcessInformationFn>(
-                reinterpret_cast<void*>(GetProcAddress(kernel, "SetProcessInformation"))
-            );
-            if (!fn) return; // Windows older than 8, nothing to do.
-
-            PowerThrottlingState state{};
-            state.version = kPowerThrottlingVersion;
-            if (optOut) {
-                // control = we decide, state = 0 -> throttling off.
-                state.controlMask = kPowerThrottlingExecutionSpeed;
-                state.stateMask = 0;
-            }
-            else {
-                // control = 0 -> back to system managed.
-                state.controlMask = 0;
-                state.stateMask = 0;
-            }
-            fn(GetCurrentProcess(), kProcessPowerThrottling, &state, sizeof(state));
-        }
-
-        DWORD priorityClassFor(ProcessPriority p) {
-            switch (p) {
-                case ProcessPriority::AboveNormal: return ABOVE_NORMAL_PRIORITY_CLASS;
-                case ProcessPriority::High: return HIGH_PRIORITY_CLASS;
-                default: return NORMAL_PRIORITY_CLASS;
+            ULONG current = 0;
+            // 10000 units of 100 ns = 1 ms.
+            if (fn(10000, enable ? TRUE : FALSE, &current) >= 0) {
+                g_timerApplied = wanted;
             }
         }
 
+        void setPowerThrottling(bool disable) {
+            int const wanted = disable ? 1 : 0;
+            if (wanted == g_throttleApplied) return;
+
+            PROCESS_POWER_THROTTLING_STATE state{};
+            state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+            state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+            // StateMask 0 = throttling off, EXECUTION_SPEED = back to default.
+            state.StateMask = disable ? 0 : PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+
+            if (SetProcessInformation(
+                GetCurrentProcess(), ProcessPowerThrottling, &state, sizeof(state)
+            )) {
+                g_throttleApplied = wanted;
+            }
+        }
+
+        void setPriority(ProcessPriority priority) {
+            int const wanted = static_cast<int>(priority);
+            if (wanted == g_priorityApplied) return;
+
+            DWORD cls = NORMAL_PRIORITY_CLASS;
+            if (priority == ProcessPriority::AboveNormal) cls = ABOVE_NORMAL_PRIORITY_CLASS;
+            else if (priority == ProcessPriority::High) cls = HIGH_PRIORITY_CLASS;
+
+            if (SetPriorityClass(GetCurrentProcess(), cls)) {
+                g_priorityApplied = wanted;
+            }
+        }
     }
 
     void applySystemTuning() {
         auto const& cfg = config();
-
-        bool wantTimer = cfg.enabled && cfg.timerResolution;
-        if (wantTimer != g_timerApplied) {
-            if (wantTimer) {
-                if (timeBeginPeriod(1) == TIMERR_NOERROR) g_timerApplied = true;
-            }
-            else {
-                timeEndPeriod(1);
-                g_timerApplied = false;
-            }
-        }
-
-        bool wantOptOut = cfg.enabled && cfg.disablePowerThrottling;
-        if (wantOptOut != g_throttleOptOutApplied) {
-            setPowerThrottlingOptOut(wantOptOut);
-            g_throttleOptOutApplied = wantOptOut;
-        }
-
-        ProcessPriority wantPriority = cfg.enabled ? cfg.priority : ProcessPriority::Normal;
-        if (wantPriority != g_priorityApplied) {
-            if (SetPriorityClass(GetCurrentProcess(), priorityClassFor(wantPriority))) {
-                g_priorityApplied = wantPriority;
-            }
-        }
+        if (!cfg.enabled) return;
+        setTimerResolution(cfg.timerResolution);
+        setPowerThrottling(cfg.disablePowerThrottling);
+        setPriority(cfg.priority);
     }
 
 #else
