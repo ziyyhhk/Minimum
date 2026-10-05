@@ -321,8 +321,9 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         ++counters.framesDrawn;
         ++s_fpsDrawn;
 
-        // Low latency mode (Windows / macOS): let the GPU catch up before the next
-        // frame starts, so input is not stuck behind frames queued in the driver.
+        // Low latency mode: let the GPU catch up before the next frame starts, so
+        // input is not stuck behind frames queued in the driver. Works on desktop
+        // and on mobile (GLES exports glFinish under the same name).
         if (cfg.enabled && cfg.lowLatency && s_syncOk && focused && totalFrames >= 300) {
             minimum::hardGpuSync();
         }

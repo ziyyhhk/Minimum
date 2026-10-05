@@ -56,8 +56,12 @@ namespace minimum {
         float hudScale = 0.5f;
         uint8_t hudOpacity = 200;
 
-        // Latency (desktop: Windows and macOS)
+        // Latency (all platforms)
         bool lowLatency = false;
+
+        // Mobile FPS unlock (Android / iOS, ignored elsewhere)
+        bool fpsUnlock = false;
+        double fpsLimit = 120.0;
 
         // Other
         bool fastAltTab = true;
@@ -104,7 +108,8 @@ namespace minimum {
     void audioPoll(bool focused);
 
     // Hard GPU sync (glFinish) after a drawn frame. Trims the queue of frames the driver
-    // keeps in flight, which lowers input-to-screen latency. Windows and macOS only.
+    // keeps in flight, which lowers input-to-screen latency. Available everywhere: desktop
+    // GL and GLES (Android / iOS) both export glFinish under the same name.
     void hardGpuSync();
 
     // Particle cap that is actually applied right now: the configured cap, lowered

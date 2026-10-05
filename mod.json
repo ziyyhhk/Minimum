@@ -8,9 +8,9 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v4.1.0",
+	"version": "v3.2.1",
 	"developer": "ziyyhhk",
-	"description": "Performance mod for PC, Mac, Android and iOS. Skips idle particle draws, caps particle pools, adds a pause-menu button with quick settings, a real FPS counter, and (Windows/macOS) a low latency mode. Windows also gets frame pacing tweaks, background throttling and tab-out volume. Visual only: never touches gameplay, physics or timing.",
+	"description": "Lightweight performance mod. Skips particle draws that render nothing, caps particle spam in heavy levels, shows your real FPS, can cut input lag, and unlocks FPS on phones. Tap the logo in the pause menu for quick toggles. Visual only - gameplay, physics and timing are never touched.",
 	"tags": [
 		"performance",
 		"utility"
@@ -82,21 +82,44 @@
 		},
 		"title-latency": {
 			"type": "title",
-			"name": "Latency (Windows / macOS)",
-			"platforms": [
-				"win",
-				"mac"
-			]
+			"name": "Latency"
 		},
 		"low-latency": {
 			"name": "Low Latency Mode",
-			"description": "Trims the queue of frames the graphics driver keeps in flight, so clicks reach the screen sooner. It makes the CPU wait for the GPU every frame, so on a GPU limited PC it can LOWER your FPS. Off by default. If you turn it on and the game gets slower, Minimum switches it off by itself for a while.",
+			"description": "Trims the queue of frames the graphics driver keeps in flight, so taps and clicks reach the screen sooner. The CPU waits for the GPU every frame, so on a GPU limited device it can LOWER your FPS. Off by default. If it costs you frames, Minimum switches it off by itself for a while.",
+			"type": "bool",
+			"default": false
+		},
+		"title-mobile": {
+			"type": "title",
+			"name": "Mobile",
+			"platforms": [
+				"android",
+				"ios"
+			]
+		},
+		"fps-unlock": {
+			"name": "Unlock FPS",
+			"description": "Asks the game for frames faster than 60. On a 60 Hz screen nothing changes; on a 90/120 Hz screen the game can finally use it. Off by default.",
 			"type": "bool",
 			"default": false,
 			"platforms": [
-				"win",
-				"mac"
+				"android",
+				"ios"
 			]
+		},
+		"fps-limit": {
+			"name": "FPS Limit",
+			"description": "The frame rate to ask for when Unlock FPS is on. Set it to your screen's refresh rate.",
+			"type": "int",
+			"min": 30,
+			"max": 480,
+			"default": 120,
+			"platforms": [
+				"android",
+				"ios"
+			],
+			"enable-if": "fps-unlock"
 		},
 		"title-particles": {
 			"type": "title",

@@ -126,9 +126,15 @@ namespace minimum {
         c.fastAltTab = false;
 #endif
 
-#ifdef GEODE_IS_DESKTOP
-        // Windows and macOS only (see "platforms" in mod.json).
+        // All platforms.
         c.lowLatency = mod->getSettingValue<bool>("low-latency");
+
+#ifdef GEODE_IS_MOBILE
+        c.fpsUnlock = mod->getSettingValue<bool>("fps-unlock");
+        int64_t fpsLimit = mod->getSettingValue<int64_t>("fps-limit");
+        c.fpsLimit = static_cast<double>(std::clamp<int64_t>(fpsLimit, 30, 480));
+#else
+        c.fpsUnlock = false;
 #endif
 
         applyPreset(mod->getSettingValue<std::string>("preset"), c);
