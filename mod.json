@@ -10,7 +10,7 @@
 	"name": "Minimum",
 	"version": "v3.2.1",
 	"developer": "ziyyhhk",
-	"description": "Lightweight performance mod. Skips particle draws that render nothing, caps particle spam in heavy levels, shows your real FPS, can cut input lag, and unlocks FPS on phones. Tap the logo in the pause menu for quick toggles. Visual only - gameplay, physics and timing are never touched.",
+	"description": "Makes Geometry Dash run smoother. It skips drawing idle particles, limits how many particles a level can spawn, and adds a small menu to the pause screen with a live FPS counter and a few quick toggles. There are also options for lower input lag, plus extra tweaks on Windows. Works on PC, Mac, Android and iOS. Only changes how things are drawn, never the gameplay.",
 	"tags": [
 		"performance",
 		"utility"
@@ -25,13 +25,13 @@
 		},
 		"mod-enabled": {
 			"name": "Enable Minimum",
-			"description": "Master switch. Turn it off to compare with and without the mod (no restart needed).",
+			"description": "Master switch. Turn it off to compare the game with and without the mod, no restart needed.",
 			"type": "bool",
 			"default": true
 		},
 		"preset": {
 			"name": "Preset",
-			"description": "Quick profile for the particle and background settings. Balanced: cap 256. Performance: cap 128. Extreme: cap 48, thin effects. Custom: use the individual settings below. Re-enter the level after changing the cap.",
+			"description": "Quick profile for particles and the background frame rate. Balanced: 256 particles. Performance: 128. Extreme: 48 and thinner effects. Custom uses the settings below. Re-enter the level after changing it.",
 			"type": "string",
 			"default": "Custom",
 			"one-of": [
@@ -41,9 +41,17 @@
 				"Extreme"
 			]
 		},
+		"adaptive-target-fps": {
+			"name": "Target FPS",
+			"description": "The frame rate you want to hold, usually your screen refresh rate (60, 90, 120, 144...). The FPS counter colors, the adaptive particle cap and the Android CPU hint all use it.",
+			"type": "int",
+			"min": 20,
+			"max": 360,
+			"default": 60
+		},
 		"pause-button-corner": {
 			"name": "Pause Menu Button",
-			"description": "Where the Minimum logo button sits in the pause menu. If another button is in the way it moves to the nearest free spot by itself. Hidden removes it (open Minimum from the Geode mod list instead).",
+			"description": "Where the Minimum logo sits in the pause menu. If another button is in the way it moves to the nearest free spot. Hidden removes it (you can still open Minimum from the Geode mod list).",
 			"type": "string",
 			"default": "Top Right",
 			"one-of": [
@@ -86,40 +94,9 @@
 		},
 		"low-latency": {
 			"name": "Low Latency Mode",
-			"description": "Trims the queue of frames the graphics driver keeps in flight, so taps and clicks reach the screen sooner. The CPU waits for the GPU every frame, so on a GPU limited device it can LOWER your FPS. Off by default. If it costs you frames, Minimum switches it off by itself for a while.",
+			"description": "Makes the CPU wait for the GPU after every frame so clicks show up sooner. How much it helps depends on the device, and on a slow GPU it can cost FPS. It only runs while the game holds its frame rate and switches itself off for a while if FPS drops. Off by default.",
 			"type": "bool",
 			"default": false
-		},
-		"title-mobile": {
-			"type": "title",
-			"name": "Mobile",
-			"platforms": [
-				"android",
-				"ios"
-			]
-		},
-		"fps-unlock": {
-			"name": "Unlock FPS",
-			"description": "Asks the game for frames faster than 60. On a 60 Hz screen nothing changes; on a 90/120 Hz screen the game can finally use it. Off by default.",
-			"type": "bool",
-			"default": false,
-			"platforms": [
-				"android",
-				"ios"
-			]
-		},
-		"fps-limit": {
-			"name": "FPS Limit",
-			"description": "The frame rate to ask for when Unlock FPS is on. Set it to your screen's refresh rate.",
-			"type": "int",
-			"min": 30,
-			"max": 480,
-			"default": 120,
-			"platforms": [
-				"android",
-				"ios"
-			],
-			"enable-if": "fps-unlock"
 		},
 		"title-particles": {
 			"type": "title",
@@ -127,13 +104,13 @@
 		},
 		"skip-idle-particles": {
 			"name": "Skip Idle Particle Draws",
-			"description": "Do not issue a draw call for particle systems that have no live particles. No visual change.",
+			"description": "Does not draw particle systems that have no live particles. Looks exactly the same.",
 			"type": "bool",
 			"default": true
 		},
 		"cap-particles": {
 			"name": "Cap Particle Pool Size",
-			"description": "Limits how many particles one particle system can hold. Only affects systems created after the change, so re-enter the level. Lower cap = more FPS in particle-heavy levels, thinner effects.",
+			"description": "Limits how many particles a single system can hold. Only affects systems created after the change, so re-enter the level. Lower cap means more FPS in heavy levels and thinner effects.",
 			"type": "bool",
 			"default": true
 		},
@@ -147,20 +124,37 @@
 			"enable-if": "cap-particles"
 		},
 		"adaptive-cap": {
-			"name": "Adaptive Particle Cap (experimental)",
-			"description": "If the game keeps missing Target FPS, the particle cap is lowered step by step (down to 1/8) and raised again once the game is smooth. Visual only. Off by default.",
+			"name": "Adaptive Particle Cap",
+			"description": "If the game keeps missing the Target FPS, the particle cap is lowered step by step (down to 1/8) and raised again once things are smooth. Visual only.",
 			"type": "bool",
-			"default": false,
+			"default": true,
 			"enable-if": "cap-particles"
 		},
-		"adaptive-target-fps": {
-			"name": "Adaptive Target FPS",
-			"description": "The frame rate you want to hold. Set it to your screen refresh rate (60, 90, 120, 144...). Slow = a frame longer than 1.5x this.",
-			"type": "int",
-			"min": 20,
-			"max": 360,
-			"default": 60,
-			"enable-if": "cap-particles && adaptive-cap"
+		"title-detail": {
+			"type": "title",
+			"name": "Detail"
+		},
+		"low-detail": {
+			"name": "Low Detail Mode",
+			"description": "Turns on the game's own Low Detail Mode while Minimum is on, which skips decoration effects like speed particles and the landing ring. Your saved Options are not changed, and it goes back to what you had when you turn this off. Takes full effect on the next attempt.",
+			"type": "bool",
+			"default": false
+		},
+		"title-android": {
+			"type": "title",
+			"name": "Android",
+			"platforms": [
+				"android"
+			]
+		},
+		"android-cpu-hint": {
+			"name": "CPU Speed Hint",
+			"description": "Tells Android how long each frame takes so it can raise the CPU speed before a heavy frame arrives, which helps with stutter. Needs Android 13 or newer, does nothing on older versions. May use a bit more battery.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"android"
+			]
 		},
 		"title-system": {
 			"type": "title",
@@ -282,30 +276,15 @@
 			"type": "title",
 			"name": "Diagnostics"
 		},
-		"spike-logger": {
-			"name": "Frame Spike Logger",
-			"description": "Writes every frame that takes longer than the threshold to the Geode log, with the player x position and how many particle systems were created during that frame. Look for lines containing 'Frame spike' in the files in geode/logs (or in the Geode console).",
-			"type": "bool",
-			"default": true
-		},
-		"spike-threshold-ms": {
-			"name": "Spike Threshold (ms)",
-			"description": "A frame longer than this counts as a spike. 40 ms = a visible stutter at 60 FPS. Lower it if you run 240 FPS and want to catch smaller hitches.",
-			"type": "int",
-			"min": 10,
-			"max": 500,
-			"default": 40,
-			"enable-if": "spike-logger"
-		},
 		"show-stats": {
 			"name": "Show FPS Counter",
-			"description": "Shows the real FPS in a corner of the screen. Green is smooth, yellow so-so, red bad. Shows (background) while the game is throttled because the window is not focused.",
+			"description": "Shows the real FPS in a corner. Green means it holds your Target FPS, yellow is close, red is bad. Shows (background) while the window is not focused and the game is being throttled.",
 			"type": "bool",
 			"default": true
 		},
 		"hud-detail": {
 			"name": "Stats Detail",
-			"description": "Compact shows only the FPS. Detailed also shows logic updates per second, worst frame, spikes and particle counters.",
+			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, logic updates per second and spikes (plus CPU time on Android).",
 			"type": "string",
 			"default": "Compact",
 			"one-of": [
@@ -344,6 +323,21 @@
 			"max": 255,
 			"default": 200,
 			"enable-if": "show-stats"
+		},
+		"spike-logger": {
+			"name": "Frame Spike Logger",
+			"description": "Writes frames that take longer than the threshold to the Geode log, with the player x position and how many particle systems were created in that frame. Look for \"Frame spike\" in geode/logs. Off by default.",
+			"type": "bool",
+			"default": false
+		},
+		"spike-threshold-ms": {
+			"name": "Spike Threshold (ms)",
+			"description": "A frame longer than this counts as a spike. 40 ms is a visible stutter at 60 FPS. Lower it if you run 240 FPS and want to catch smaller hitches.",
+			"type": "int",
+			"min": 10,
+			"max": 500,
+			"default": 40,
+			"enable-if": "spike-logger"
 		},
 		"title-other": {
 			"type": "title",

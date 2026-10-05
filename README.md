@@ -1,71 +1,74 @@
-# Minimum v3.2.1
+# Minimum
 
-A small performance mod for Geometry Dash 2.2081 (Geode 5.10+) for **Windows, macOS, Android and iOS**.
+A performance mod for Geometry Dash 2.2081 (Geode 5.10+). Works on Windows, macOS, Android and iOS.
 
-Open the pause menu and tap the logo: quick toggles, a live FPS readout, a button to all settings, and the credits.
-The logo sits in the top right by default. If another button is already there it moves to the nearest free spot by itself,
-and you can pick another corner (or hide it) with the *Pause Menu Button* setting.
+Pause a level and tap the logo. You get a live FPS card, four presets, six quick toggles and a link to the full settings.
 
 ## What it does
 
-| Feature | Windows | macOS | Android | iOS |
+| | Windows | macOS | Android | iOS |
 |---|:-:|:-:|:-:|:-:|
-| Pause menu logo button, quick settings | yes | yes | yes | yes |
-| Real FPS counter (green / yellow / red) | yes | yes | yes | yes |
+| Pause menu popup, FPS counter (with 1% low) | yes | yes | yes | yes |
 | Skip idle particle draws, particle cap, adaptive cap | yes | yes | yes | yes |
-| Low Latency Mode (cuts frames queued in the driver) | yes | yes | yes | yes |
-| Unlock FPS past 60 | - | - | yes | yes |
-| Frame spike logger | yes | yes | yes | yes |
+| Low Latency Mode | yes | yes | yes | yes |
+| Low Detail Mode | yes | yes | yes | yes |
+| CPU speed hint (Android 13+) | - | - | yes | - |
 | Hotkeys | yes | yes | - | - |
 | 1 ms timer, no power throttling, process priority | yes | - | - | - |
-| Background throttle, tab-out volume, Fast Alt Tab, Draw Divide | yes | - | - | - |
+| Background throttle, tab-out volume, fast alt-tab, Draw Divide | yes | - | - | - |
 
-Why some things are Windows only: they need a reliable "is the window focused" check or an OS feature that only
-Windows has. Fast Alt Tab is left out of mobile on purpose: the save on focus loss is what protects your progress
-when the OS closes the app.
+Fast alt-tab is left out of mobile on purpose. The save that happens when the app goes to the background is what protects your progress if the OS closes it.
 
-## Input and latency (honest version)
+## What to expect
 
-* **Low Latency Mode** (all platforms, **off by default**) empties the queue of frames the graphics driver keeps in
-  flight, so a tap or click can reach the screen one to two frames sooner. The price: the CPU waits for the GPU every
-  frame, so if your GPU is the limit it can lower your FPS. It only runs while the game is holding its frame rate,
-  and if it costs frames it switches itself off for 10 s, then 20 s, 40 s and so on, instead of flickering on and off.
-* **Unlock FPS** (Android / iOS, off by default) lets the game ask for frames faster than 60. On a 60 Hz phone nothing
-  changes; on a 90/120 Hz screen the game can use it. Set *FPS Limit* to your screen's refresh rate.
-* Minimum does **not** do sub-frame click timing. That is a different system, and it is already built into the game
-  itself since 2.208 (Click Between / On Steps).
-* For the lowest latency on PC also turn off V-Sync in the video settings and use the highest FPS cap you can hold.
-  Minimum never changes physics, timing or any gameplay value.
+- A level that already holds your FPS cap will not run faster. Nothing beats the cap.
+- The gains are in particle heavy levels, on weaker phones and laptops, in Low Detail Mode, and while the game is in the background on PC.
+- Low Latency Mode makes the CPU wait for the GPU after each frame, which can get a click on screen a frame or two sooner. If the GPU is already the slow part it costs FPS, so Minimum only runs it while the game holds its frame rate and turns it off for 10 s, then 20 s, 40 s and so on if FPS drops. On a phone that is CPU bound it may do nothing.
+- It is not sub-frame click timing. The *Click Between Frames* mod does that on Windows and works next to Minimum.
+- For the lowest latency also turn V-Sync off in the game's video settings and use the highest FPS cap you can hold.
 
-## Check that it works (30 seconds)
+## Quick check that it works
 
-1. Start a level. The corner shows your real FPS.
-2. Open the pause menu, tap the logo, switch **Minimum** off and on while watching FPS and how the game feels.
-3. Windows: alt-tab away. The line shows `(background)`, GPU use drops, and audio goes quiet. Come back and the audio is back.
-
-## Does it change gameplay?
-
-No. Particle changes are visual only. Draw Divide, the background throttle, Low Latency Mode and FPS unlock only change
-*when and how drawing happens*; game logic keeps running every frame with the same delta time.
-
-## Honest expectations
-
-* A level that already holds your FPS cap will not run faster. Nothing can beat the cap.
-* Gains show up in particle-heavy levels, in Draw Divide above your refresh rate, and while tabbed out.
-* Do not run Draw Divide together with the `mat.draw-divide` mod. Both hook `CCDirector::drawScene`.
+1. Start a level. The FPS counter shows your real FPS.
+2. Open the pause menu, tap the logo, turn Minimum off and on and watch the number and how the game feels. Try the Extreme preset in a heavy level.
+3. Windows: alt-tab away. The counter shows `(background)`, GPU use drops and audio goes quiet. Come back and the audio is back.
 
 ## Building
 
-Push to GitHub and the workflow in `.github/workflows/build.yml` builds Windows, macOS, iOS, Android32 and Android64
-and combines them into one `.geode` file (see the *Build Output* artifact of the run).
+You need the Geode SDK and CLI (https://docs.geode-sdk.org/getting-started/). With `GEODE_SDK` set:
 
-Or build locally with the Geode CLI: `geode build` (needs the SDK, and the Android NDK for mobile builds).
+```
+geode build
+```
+
+or with plain CMake:
+
+```
+cmake -B build
+cmake --build build --config RelWithDebInfo
+```
+
+The GitHub Actions workflow builds all five targets and merges them into one `.geode` file (artifact `Minimum-all-platforms`).
+
+Tests for the layout and frame statistics code need no SDK:
+
+```
+cmake -S tests -B build-tests
+cmake --build build-tests
+ctest --test-dir build-tests --output-on-failure
+```
+
+## Layout
+
+- `include/minimum_logic.hpp` pure logic (frame statistics, presets, popup layout, latency guard). Unit tested.
+- `src/frame_gate.cpp` the `CCDirector::drawScene` hook: timing, FPS counter, background throttle, Draw Divide
+- `src/pause_menu.cpp` pause menu button and popup
+- `src/particles.cpp` idle draw skipping, particle cap, adaptive cap
+- `src/latency.cpp`, `src/game_quality.cpp`, `src/perf_hint.cpp` low latency, low detail, Android CPU hint
+- `src/system_tuning.cpp`, `src/background.cpp`, `src/app_delegate.cpp` Windows extras
 
 ## Credits
 
-* **Developer:** ziyyhhk
-* **Helper:** Rafa
-* **Testers:** Rafa, Broken Team, ziyyhhk
+Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk.
 
-Inspired by [Draw Divide](https://geode-sdk.org/mods/mat.draw-divide) (qimiko / mat, MIT) and
-[Algebra Dash](https://github.com/cgytrus/AlgebraDash) (ConfiG, MIT).
+Inspired by [Draw Divide](https://geode-sdk.org/mods/mat.draw-divide) (qimiko / mat, MIT) and [Algebra Dash](https://github.com/cgytrus/AlgebraDash) (ConfiG, MIT).

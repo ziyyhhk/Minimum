@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <minimum_logic.hpp>
 
 // Minimum: shared state.
 //
@@ -42,11 +43,14 @@ namespace minimum {
         ProcessPriority priority = ProcessPriority::Normal;
 
         // Adaptive particle cap (all platforms)
-        bool adaptiveCap = false;
-        double adaptiveTargetFps = 60.0;
+        bool adaptiveCap = true;
+
+        // The frame rate the player aims at (screen refresh rate). Used by the adaptive cap,
+        // the FPS counter colors and the Android CPU hint.
+        double targetFps = 60.0;
 
         // Diagnostics
-        bool spikeLogger = true;
+        bool spikeLogger = false;
         double spikeThresholdMs = 40.0;
 
         // Stats line
@@ -59,9 +63,11 @@ namespace minimum {
         // Latency (all platforms)
         bool lowLatency = false;
 
-        // Mobile FPS unlock (Android / iOS, ignored elsewhere)
-        bool fpsUnlock = false;
-        double fpsLimit = 120.0;
+        // Turns on the game's own Low Detail Mode while Minimum is on.
+        bool lowDetail = false;
+
+        // Android only: tell the system how much CPU time each frame needs.
+        bool androidCpuHint = true;
 
         // Other
         bool fastAltTab = true;
@@ -108,8 +114,8 @@ namespace minimum {
     void audioPoll(bool focused);
 
     // Hard GPU sync (glFinish) after a drawn frame. Trims the queue of frames the driver
-    // keeps in flight, which lowers input-to-screen latency. Available everywhere: desktop
-    // GL and GLES (Android / iOS) both export glFinish under the same name.
+    // keeps in flight, which can lower input-to-screen latency. Does nothing if the GL
+    // library has no glFinish.
     void hardGpuSync();
 
     // Particle cap that is actually applied right now: the configured cap, lowered
@@ -124,5 +130,25 @@ namespace minimum {
     // priority. Only does work when the wanted state differs from the applied
     // state, so it is safe to call after every config refresh. No-op elsewhere.
     void applySystemTuning();
+
+    // Rolling frame times of the drawn frames (see FrameStats). Main thread only.
+    FrameStats& frameStats();
+
+    // Leaves the active preset without changing how the game behaves: the preset's numbers
+    // are copied into the individual settings and the preset becomes "Custom". Called before
+    // the player flips a toggle that a preset controls, otherwise the preset would silently
+    // undo the click.
+    void leavePreset();
+
+    // Applies the "Low detail mode" setting to the game (and puts it back when it is switched
+    // off). Cheap when nothing changed, safe to call every frame once the game is running.
+    void applyGameQuality();
+
+    // Android only: reports how long the CPU was busy in the frame that just finished so the
+    // system can pick a fitting CPU speed ahead of time. No-op elsewhere.
+    void reportCpuWork(int64_t workNs);
+
+    // Creates the FPS counter overlay once the game has been running for a while.
+    void ensureHud(unsigned int totalFrames);
 
 }

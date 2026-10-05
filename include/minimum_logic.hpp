@@ -1,7 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 // Minimum: pure logic, no Geode / cocos types.
@@ -149,5 +152,182 @@ namespace minimum {
         int m_trips = 0;
         bool m_on = false;
     };
+
+    // ---------------------------------------------------------------------------------------
+    // Frame statistics
+    // ---------------------------------------------------------------------------------------
+
+    // Keeps the last kCapacity drawn frames: how long each one took from start to start
+    // (what the player sees) and how long the CPU was busy inside it. Fed once per drawn
+    // frame, read a few times per second by the FPS counter and the Minimum popup.
+    class FrameStats {
+    public:
+        static constexpr size_t kCapacity = 240;
+
+        void push(double frameMs, double cpuMs) {
+            m_frame[m_head] = static_cast<float>(frameMs);
+            m_cpu[m_head] = static_cast<float>(cpuMs);
+            m_head = (m_head + 1) % kCapacity;
+            if (m_size < kCapacity) ++m_size;
+        }
+
+        void clear() {
+            m_head = 0;
+            m_size = 0;
+        }
+
+        size_t size() const { return m_size; }
+
+        // i = 0 is the oldest sample, size() - 1 the newest.
+        double frameMsAt(size_t i) const { return m_frame[slot(i)]; }
+        double cpuMsAt(size_t i) const { return m_cpu[slot(i)]; }
+
+        // Average over the newest n samples (n is clamped to what is available).
+        double averageFrameMs(size_t n) const { return average(m_frame, n); }
+        double averageCpuMs(size_t n) const { return average(m_cpu, n); }
+
+        // "1% low": the frame rate of the slowest 1% of the newest n frames. It is the number
+        // that tells you about stutter, which an average FPS hides.
+        double lowFps(size_t n) const {
+            n = std::min(n, m_size);
+            if (n == 0) return 0.0;
+            std::array<float, kCapacity> window{};
+            for (size_t i = 0; i < n; ++i) {
+                window[i] = m_frame[slot(m_size - n + i)];
+            }
+            size_t const worst = std::max<size_t>(1, (n + 99) / 100);
+            // Largest `worst` frame times end up in the last `worst` slots.
+            std::nth_element(window.begin(), window.begin() + (n - worst), window.begin() + n);
+            double sum = 0.0;
+            for (size_t i = n - worst; i < n; ++i) sum += window[i];
+            double const avg = sum / static_cast<double>(worst);
+            return avg > 0.0 ? 1000.0 / avg : 0.0;
+        }
+
+    private:
+        size_t slot(size_t i) const { return (m_head + kCapacity - m_size + i) % kCapacity; }
+
+        double average(std::array<float, kCapacity> const& data, size_t n) const {
+            n = std::min(n, m_size);
+            if (n == 0) return 0.0;
+            double sum = 0.0;
+            for (size_t i = 0; i < n; ++i) sum += data[slot(m_size - n + i)];
+            return sum / static_cast<double>(n);
+        }
+
+        std::array<float, kCapacity> m_frame{};
+        std::array<float, kCapacity> m_cpu{};
+        size_t m_head = 0;
+        size_t m_size = 0;
+    };
+
+    // Green / yellow / red for the FPS counter, relative to the frame rate the player aims at.
+    enum class FpsBand { Good, Okay, Bad };
+
+    inline FpsBand classifyFps(double fps, double targetFps) {
+        if (targetFps <= 0.0) targetFps = 60.0;
+        double const ratio = fps / targetFps;
+        if (ratio >= 0.92) return FpsBand::Good;
+        if (ratio >= 0.60) return FpsBand::Okay;
+        return FpsBand::Bad;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Presets
+    // ---------------------------------------------------------------------------------------
+
+    // The numbers a preset stands for. "Custom" (or anything unknown) is not a preset.
+    // Every preset also switches "skip idle particles" and "cap particles" on.
+    struct PresetValues {
+        bool known = false;
+        unsigned int particleCap = 128;
+        double backgroundFps = 20.0;
+    };
+
+    inline PresetValues presetValues(std::string const& name) {
+        if (name == "Balanced") return {true, 256u, 30.0};
+        if (name == "Performance") return {true, 128u, 20.0};
+        if (name == "Extreme") return {true, 48u, 10.0};
+        return {};
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Popup layout
+    // ---------------------------------------------------------------------------------------
+
+    // Where everything in the Minimum popup goes. All boxes are in popup coordinates, the
+    // origin is the lower left corner of the popup. Built bottom-up, so the popup is exactly as
+    // tall as its content, and it switches to tighter spacing when the screen is short.
+    struct PopupPlan {
+        float width = 0.f;
+        float height = 0.f;
+        bool compact = false;
+        Box live;
+        std::vector<Box> presets;
+        std::vector<Box> toggles;
+        Box settingsButton;
+        Box credits;
+    };
+
+    inline PopupPlan planPopup(float maxHeight, size_t toggleCount, size_t presetCount = 4) {
+        auto build = [&](bool compact) {
+            PopupPlan p;
+            p.compact = compact;
+            p.width = 372.f;
+
+            float const side = 18.f;
+            float const gap = compact ? 5.f : 7.f;
+            float const titleZone = compact ? 34.f : 42.f;
+            float const liveH = compact ? 46.f : 54.f;
+            float const presetH = compact ? 24.f : 26.f;
+            float const cardH = compact ? 26.f : 28.f;
+            float const cardPitch = compact ? 30.f : 32.f;
+            float const buttonH = compact ? 26.f : 28.f;
+            float const creditsH = 12.f;
+            float const bottom = compact ? 8.f : 10.f;
+            float const inner = p.width - 2.f * side;
+            float const columnGap = 8.f;
+            float const cardW = (inner - columnGap) / 2.f;
+
+            size_t const rows = (toggleCount + 1) / 2;
+
+            float y = bottom;
+            p.credits = {side, y, inner, creditsH};
+            y += creditsH + gap;
+
+            float const buttonW = 140.f;
+            p.settingsButton = {(p.width - buttonW) / 2.f, y, buttonW, buttonH};
+            y += buttonH + gap;
+
+            float const blockH = rows == 0 ? 0.f : static_cast<float>(rows - 1) * cardPitch + cardH;
+            p.toggles.reserve(toggleCount);
+            for (size_t i = 0; i < toggleCount; ++i) {
+                size_t const row = i / 2;
+                bool const alone = (i + 1 == toggleCount) && (toggleCount % 2 == 1);
+                float const x = alone ? (p.width - cardW) / 2.f : (i % 2 == 0 ? side : side + cardW + columnGap);
+                float const top = static_cast<float>(rows - 1 - row) * cardPitch;
+                p.toggles.push_back({x, y + top, cardW, cardH});
+            }
+            y += blockH + gap;
+
+            float const presetGap = 6.f;
+            float const presetW = presetCount == 0 ? 0.f
+                : (inner - presetGap * static_cast<float>(presetCount - 1)) / static_cast<float>(presetCount);
+            for (size_t i = 0; i < presetCount; ++i) {
+                p.presets.push_back({side + static_cast<float>(i) * (presetW + presetGap), y, presetW, presetH});
+            }
+            y += presetH + gap;
+
+            p.live = {side, y, inner, liveH};
+            y += liveH + titleZone;
+
+            p.height = y;
+            return p;
+        };
+
+        PopupPlan plan = build(false);
+        if (plan.height > maxHeight) plan = build(true);
+        return plan;
+    }
 
 }
