@@ -237,17 +237,20 @@ namespace minimum {
     // ---------------------------------------------------------------------------------------
 
     // The numbers a preset stands for. "Custom" (or anything unknown) is not a preset.
-    // Every preset also switches "skip idle particles" and "cap particles" on.
+    // Every preset also switches "skip idle particles" and "cap particles" on. Only the
+    // strongest one also forces the game's own Low Detail Mode on.
     struct PresetValues {
         bool known = false;
         unsigned int particleCap = 128;
         double backgroundFps = 20.0;
+        bool lowDetail = false;
     };
 
     inline PresetValues presetValues(std::string const& name) {
-        if (name == "Balanced") return {true, 256u, 30.0};
-        if (name == "Performance") return {true, 128u, 20.0};
-        if (name == "Extreme") return {true, 48u, 10.0};
+        if (name == "Balanced") return {true, 256u, 30.0, false};
+        if (name == "Performance") return {true, 128u, 20.0, false};
+        if (name == "Extreme") return {true, 48u, 10.0, false};
+        if (name == "Super Performance") return {true, 16u, 5.0, true};
         return {};
     }
 
@@ -257,34 +260,38 @@ namespace minimum {
 
     // Where everything in the Minimum popup goes. All boxes are in popup coordinates, the
     // origin is the lower left corner of the popup. Built bottom-up, so the popup is exactly as
-    // tall as its content, and it switches to tighter spacing when the screen is short.
+    // tall as its content. Three spacing levels (0 roomy, 1 compact, 2 tight): the roomiest one
+    // that fits the screen is used.
     struct PopupPlan {
         float width = 0.f;
         float height = 0.f;
-        bool compact = false;
+        int level = 0;
+        bool compact = false;      // level >= 1
         Box live;
-        std::vector<Box> presets;
+        std::vector<Box> presets;  // first row on top, 3 per row, the last row is stretched
         std::vector<Box> toggles;
         Box settingsButton;
-        Box credits;
+        Box credits;               // two lines of text
     };
 
-    inline PopupPlan planPopup(float maxHeight, size_t toggleCount, size_t presetCount = 4) {
-        auto build = [&](bool compact) {
+    inline PopupPlan planPopup(float maxHeight, size_t toggleCount, size_t presetCount = 5) {
+        auto build = [&](int level) {
             PopupPlan p;
-            p.compact = compact;
+            p.level = level;
+            p.compact = level >= 1;
             p.width = 372.f;
 
             float const side = 18.f;
-            float const gap = compact ? 5.f : 7.f;
-            float const titleZone = compact ? 34.f : 42.f;
-            float const liveH = compact ? 46.f : 54.f;
-            float const presetH = compact ? 24.f : 26.f;
-            float const cardH = compact ? 26.f : 28.f;
-            float const cardPitch = compact ? 30.f : 32.f;
-            float const buttonH = compact ? 26.f : 28.f;
-            float const creditsH = 12.f;
-            float const bottom = compact ? 8.f : 10.f;
+            float const gap = level == 0 ? 7.f : (level == 1 ? 5.f : 4.f);
+            float const titleZone = level == 0 ? 42.f : (level == 1 ? 34.f : 30.f);
+            float const liveH = level == 0 ? 54.f : (level == 1 ? 46.f : 40.f);
+            float const presetH = level == 0 ? 26.f : (level == 1 ? 24.f : 22.f);
+            float const presetGap = level == 0 ? 6.f : 5.f;
+            float const cardH = level == 0 ? 28.f : (level == 1 ? 26.f : 24.f);
+            float const cardPitch = cardH + (level == 0 ? 4.f : 4.f);
+            float const buttonH = level == 0 ? 28.f : (level == 1 ? 26.f : 24.f);
+            float const creditsH = 26.f;
+            float const bottom = level == 0 ? 10.f : (level == 1 ? 8.f : 6.f);
             float const inner = p.width - 2.f * side;
             float const columnGap = 8.f;
             float const cardW = (inner - columnGap) / 2.f;
@@ -310,13 +317,21 @@ namespace minimum {
             }
             y += blockH + gap;
 
-            float const presetGap = 6.f;
-            float const presetW = presetCount == 0 ? 0.f
-                : (inner - presetGap * static_cast<float>(presetCount - 1)) / static_cast<float>(presetCount);
-            for (size_t i = 0; i < presetCount; ++i) {
-                p.presets.push_back({side + static_cast<float>(i) * (presetW + presetGap), y, presetW, presetH});
+            // Presets: 3 per row. Rows are built bottom-up, so the LAST row is placed first,
+            // and the boxes are stored in reading order (first row first).
+            size_t const perRow = 3;
+            size_t const presetRows = presetCount == 0 ? 0 : (presetCount + perRow - 1) / perRow;
+            p.presets.assign(presetCount, Box{});
+            for (size_t r = presetRows; r-- > 0;) {
+                size_t const first = r * perRow;
+                size_t const inRow = std::min(perRow, presetCount - first);
+                float const w = (inner - presetGap * static_cast<float>(inRow - 1)) / static_cast<float>(inRow);
+                for (size_t i = 0; i < inRow; ++i) {
+                    p.presets[first + i] = {side + static_cast<float>(i) * (w + presetGap), y, w, presetH};
+                }
+                y += presetH + (r > 0 ? presetGap : 0.f);
             }
-            y += presetH + gap;
+            if (presetRows > 0) y += gap;
 
             p.live = {side, y, inner, liveH};
             y += liveH + titleZone;
@@ -325,9 +340,11 @@ namespace minimum {
             return p;
         };
 
-        PopupPlan plan = build(false);
-        if (plan.height > maxHeight) plan = build(true);
-        return plan;
+        for (int level = 0; level < 2; ++level) {
+            PopupPlan plan = build(level);
+            if (plan.height <= maxHeight) return plan;
+        }
+        return build(2);
     }
 
 }

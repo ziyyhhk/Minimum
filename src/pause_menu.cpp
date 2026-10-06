@@ -3,6 +3,7 @@
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -30,7 +31,7 @@ namespace {
     // Credits shown in the popup.
     constexpr char const* kDeveloper = "ziyyhhk";
     constexpr char const* kHelper = "Rafa";
-    constexpr char const* kTesters = "Rafa, Broken Team, ziyyhhk";
+    constexpr char const* kTesters = "Rafa, Broken Team, ziyyhhk, Valicc, L4ZY";
 
     // ---- Look of the popup. The layout itself (sizes, spacing, rows) is computed by
     // minimum::planPopup in minimum_logic.hpp and unit tested; these are only the colors. -----
@@ -39,15 +40,17 @@ namespace {
     constexpr uint8_t kPresetOpacity = 26;    // preset buttons that are not selected
     constexpr uint8_t kPresetSelectedOpacity = 150;
 
-    // ---- The pause menu button ------------------------------------------------------------
+    // ---- The pause menu button -------------------------------------------------------------
+    // kButtonSize is the round logo you see, kButtonHit is the area that reacts to a tap. The
+    // tap area is bigger than the picture so it is easy to hit with a thumb without the logo
+    // itself looking huge.
 #ifdef GEODE_IS_MOBILE
-    constexpr float kButtonSize = 42.f;
-#else
-    constexpr float kButtonSize = 36.f;
-#endif
-#ifdef GEODE_IS_MOBILE
+    constexpr float kButtonSize = 30.f;
+    constexpr float kButtonHit = 42.f;
     constexpr float kButtonMargin = 38.f; // stay clear of notches and rounded corners
 #else
+    constexpr float kButtonSize = 26.f;
+    constexpr float kButtonHit = 34.f;
     constexpr float kButtonMargin = 28.f;
 #endif
 
@@ -62,10 +65,12 @@ namespace {
         return Corner::TopRight;
     }
 
-    // The mod logo, scaled so its height is `size`. Falls back to a gold "M" if the image
-    // is missing, so the button is never invisible.
+    // The round mod logo, scaled so its height is `size`. Falls back to the square logo and
+    // then to a gold "M", so the button is never invisible.
     CCNode* makeLogo(float size) {
-        if (auto* logo = CCSprite::create("logo.png"_spr)) {
+        CCSprite* logo = CCSprite::create("logo_round.png"_spr);
+        if (!logo) logo = CCSprite::create("logo.png"_spr);
+        if (logo) {
             float height = logo->getContentSize().height;
             if (height > 0.f) logo->setScale(size / height);
             return logo;
@@ -73,6 +78,17 @@ namespace {
         auto* fallback = CCLabelBMFont::create("M", "goldFont.fnt");
         fallback->setScale(size / 45.f);
         return fallback;
+    }
+
+    // What the pause menu button is made of: the round logo in the middle of a bigger
+    // (invisible) tap area.
+    CCNode* makeButtonVisual() {
+        auto* holder = CCNode::create();
+        holder->setContentSize({kButtonHit, kButtonHit});
+        auto* logo = makeLogo(kButtonSize);
+        logo->setPosition({kButtonHit / 2.f, kButtonHit / 2.f});
+        holder->addChild(logo);
+        return holder;
     }
 
     // A soft rounded rectangle, used behind the toggles and the credits.
@@ -143,6 +159,15 @@ namespace {
         }
     }
 
+    // Where the button goes before the free-spot search has run: the chosen corner itself.
+    CCPoint preferredPoint() {
+        auto const win = CCDirector::get()->getWinSize();
+        Corner const corner = readCorner();
+        bool const right = corner == Corner::TopRight || corner == Corner::BottomRight;
+        bool const top = corner == Corner::TopRight || corner == Corner::TopLeft;
+        return ccp(right ? win.width - kButtonMargin : kButtonMargin, top ? win.height - kButtonMargin : kButtonMargin);
+    }
+
     // Moves `menu` (which holds the button at its origin) to the nearest spot in the chosen
     // corner that does not touch another button.
     void placeMenu(CCNode* layer, CCNode* menu) {
@@ -162,9 +187,9 @@ namespace {
         minimum::Box const area{4.f, 4.f, win.width - 8.f, win.height - 8.f};
         // Slide along the edge first (up to 8 steps), then move inward (up to 3 rows).
         auto const spot = minimum::findFreeSpot(
-            preferred, kButtonSize, blockers, area,
+            preferred, kButtonHit, blockers, area,
             right ? -1.f : 1.f, top ? -1.f : 1.f,
-            kButtonSize + 8.f, 8, 3, 4.f
+            kButtonHit + 6.f, 8, 3, 4.f
         );
         menu->setPosition({spot.center.x, spot.center.y});
     }
@@ -201,8 +226,15 @@ namespace {
 
 }
 
+// The popup opens in small steps. The frame that opens it only builds the frame, the title and
+// the live FPS card; presets, toggles and the footer follow one per frame, so no single frame
+// has to create every label and card at once (that is what made it hitch). Each step that takes
+// more than 10 ms is written to the Geode log ("Minimum popup: ... took ... ms") so a slow
+// device can be diagnosed.
 class MinimumPopup : public Popup {
 protected:
+    using Clock = std::chrono::steady_clock;
+
     struct ToggleDef {
         char const* key;
         char const* label;
@@ -212,17 +244,23 @@ protected:
         char const* name = "";
     };
 
+    static constexpr size_t kPresetCount = 5;
+    static constexpr char const* kPresetNames[kPresetCount] = {
+        "Custom", "Balanced", "Performance", "Extreme", "Super Performance"
+    };
+
     std::vector<ToggleDef> m_toggles;
     std::vector<CCMenuItemToggler*> m_togglers;
     std::vector<PresetButton> m_presetButtons;
+    minimum::PopupPlan m_plan;
+    CCSize m_size;
+    int m_stage = 0;
     CCLabelBMFont* m_fpsLabel = nullptr;
     CCLabelBMFont* m_lowLabel = nullptr;
     CCLabelBMFont* m_frameLabel = nullptr;
     std::string m_lastFps;
     std::string m_lastLow;
     std::string m_lastFrame;
-
-    static constexpr char const* kPresetNames[4] = {"Custom", "Balanced", "Performance", "Extreme"};
 
     // What a toggle is really doing right now. A preset can override a few settings, so the
     // stored value is not always the truth, the active config is.
@@ -238,12 +276,15 @@ protected:
     }
 
     static bool controlledByPreset(char const* key) {
-        return !std::strcmp(key, "skip-idle-particles") || !std::strcmp(key, "cap-particles");
+        return !std::strcmp(key, "skip-idle-particles")
+            || !std::strcmp(key, "cap-particles")
+            || !std::strcmp(key, "low-detail");
     }
 
-    // Puts a node at the center of `box` (popup coordinates, origin = lower left corner).
-    static CCPoint centerOf(minimum::Box const& box, CCSize const& popup) {
-        return ccp(box.x + box.w / 2.f - popup.width / 2.f, box.y + box.h / 2.f - popup.height / 2.f);
+    // Offset of the center of `box` (popup coordinates, origin = lower left corner) from the
+    // center of the popup.
+    CCPoint centerOf(minimum::Box const& box) const {
+        return ccp(box.x + box.w / 2.f - m_size.width / 2.f, box.y + box.h / 2.f - m_size.height / 2.f);
     }
 
     static void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
@@ -251,9 +292,13 @@ protected:
         label->setScale(natural > 0.f ? std::min(maxScale, room / natural) : maxScale);
     }
 
+    static void logSlow(char const* what, Clock::time_point since) {
+        double const ms = std::chrono::duration<double, std::milli>(Clock::now() - since).count();
+        if (ms >= 10.0) log::info("Minimum popup: {} took {:.1f} ms", what, ms);
+    }
+
     bool init() {
-        // Make sure the numbers shown below are current.
-        minimum::refreshConfig();
+        auto const started = Clock::now();
 
         m_toggles = {
             {"mod-enabled", "Minimum"},
@@ -265,45 +310,72 @@ protected:
         };
 
         auto const win = CCDirector::get()->getWinSize();
-        auto const plan = minimum::planPopup(win.height - 16.f, m_toggles.size(), 4);
-        CCSize const size{plan.width, plan.height};
+        m_plan = minimum::planPopup(win.height - 16.f, m_toggles.size(), kPresetCount);
+        m_size = CCSize{m_plan.width, m_plan.height};
 
-        if (!Popup::init(plan.width, plan.height, "square01_001.png")) return false;
+        if (!Popup::init(m_plan.width, m_plan.height, "square01_001.png")) return false;
         this->setTitle("Minimum");
 
         // Logo, top right, level with the title (the close button lives in the top left).
-        m_mainLayer->addChildAtPosition(makeLogo(32.f), Anchor::TopRight, ccp(-28.f, -23.f));
+        m_mainLayer->addChildAtPosition(makeLogo(28.f), Anchor::TopRight, ccp(-26.f, -22.f));
 
-        // ---- Live card -----------------------------------------------------------------------
-        {
-            auto const c = centerOf(plan.live, size);
-            if (auto* panel = makePanel(plan.live.w, plan.live.h, kLiveOpacity)) {
-                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, c);
-            }
+        this->buildLive();
+        this->refreshLive(0.f);
+        this->schedule(schedule_selector(MinimumPopup::refreshLive), 0.25f);
 
-            float const left = c.x - plan.live.w / 2.f;
-            m_fpsLabel = CCLabelBMFont::create("--", "bigFont.fnt");
-            m_fpsLabel->setScale(.85f);
-            m_buttonMenu->addChildAtPosition(m_fpsLabel, Anchor::Center, ccp(left + 62.f, c.y + 5.f));
+        // The rest follows one part per frame.
+        this->schedule(schedule_selector(MinimumPopup::buildStep), 0.f);
 
-            auto* caption = CCLabelBMFont::create("FPS", "goldFont.fnt");
-            caption->setScale(.4f);
-            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(left + 62.f, c.y - plan.live.h / 2.f + 11.f));
+        logSlow("opening frame", started);
+        return true;
+    }
 
-            float const right = c.x + plan.live.w / 2.f;
-            m_lowLabel = CCLabelBMFont::create("1% low --", "chatFont.fnt");
-            m_lowLabel->setScale(.8f);
-            m_buttonMenu->addChildAtPosition(m_lowLabel, Anchor::Center, ccp(right - 14.f, c.y + 8.f), ccp(1.f, .5f));
+    void buildStep(float) {
+        auto const started = Clock::now();
+        char const* what = "";
+        switch (m_stage) {
+            case 0: this->buildPresets(); what = "presets"; break;
+            case 1: this->buildToggles(0, std::min<size_t>(3, m_toggles.size())); what = "toggles 1"; break;
+            case 2: this->buildToggles(std::min<size_t>(3, m_toggles.size()), m_toggles.size()); what = "toggles 2"; break;
+            case 3: this->buildFooter(); what = "footer"; break;
+            default: break;
+        }
+        logSlow(what, started);
 
-            m_frameLabel = CCLabelBMFont::create("frame -- ms", "chatFont.fnt");
-            m_frameLabel->setScale(.8f);
-            m_frameLabel->setOpacity(190);
-            m_buttonMenu->addChildAtPosition(m_frameLabel, Anchor::Center, ccp(right - 14.f, c.y - 8.f), ccp(1.f, .5f));
+        if (++m_stage > 3) this->unschedule(schedule_selector(MinimumPopup::buildStep));
+    }
+
+    // ---- Live card ---------------------------------------------------------------------------
+    void buildLive() {
+        auto const c = centerOf(m_plan.live);
+        if (auto* panel = makePanel(m_plan.live.w, m_plan.live.h, kLiveOpacity)) {
+            m_buttonMenu->addChildAtPosition(panel, Anchor::Center, c);
         }
 
-        // ---- Presets -------------------------------------------------------------------------
-        for (size_t i = 0; i < plan.presets.size() && i < 4; ++i) {
-            auto const& box = plan.presets[i];
+        float const left = c.x - m_plan.live.w / 2.f;
+        m_fpsLabel = CCLabelBMFont::create("--", "bigFont.fnt");
+        m_fpsLabel->setScale(.85f);
+        m_buttonMenu->addChildAtPosition(m_fpsLabel, Anchor::Center, ccp(left + 62.f, c.y + 5.f));
+
+        auto* caption = CCLabelBMFont::create("FPS", "goldFont.fnt");
+        caption->setScale(.4f);
+        m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(left + 62.f, c.y - m_plan.live.h / 2.f + 11.f));
+
+        float const right = c.x + m_plan.live.w / 2.f;
+        m_lowLabel = CCLabelBMFont::create("1% low --", "chatFont.fnt");
+        m_lowLabel->setScale(.8f);
+        m_buttonMenu->addChildAtPosition(m_lowLabel, Anchor::Center, ccp(right - 14.f, c.y + 8.f), ccp(1.f, .5f));
+
+        m_frameLabel = CCLabelBMFont::create("frame -- ms", "chatFont.fnt");
+        m_frameLabel->setScale(.8f);
+        m_frameLabel->setOpacity(190);
+        m_buttonMenu->addChildAtPosition(m_frameLabel, Anchor::Center, ccp(right - 14.f, c.y - 8.f), ccp(1.f, .5f));
+    }
+
+    // ---- Presets: 3 in the first row, 2 in the second ---------------------------------------
+    void buildPresets() {
+        for (size_t i = 0; i < m_plan.presets.size() && i < kPresetCount; ++i) {
+            auto const& box = m_plan.presets[i];
 
             auto* holder = CCNode::create();
             holder->setContentSize({box.w, box.h});
@@ -320,16 +392,18 @@ protected:
 
             auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(MinimumPopup::onPreset));
             button->setTag(static_cast<int>(i));
-            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(box, size));
+            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(box));
 
             m_presetButtons.push_back({background, kPresetNames[i]});
         }
         this->syncPresetButtons();
+    }
 
-        // ---- Quick toggles: one card each ---------------------------------------------------
-        for (size_t i = 0; i < m_toggles.size(); ++i) {
-            auto const& box = plan.toggles[i];
-            auto const c = centerOf(box, size);
+    // ---- Quick toggles: one card each -------------------------------------------------------
+    void buildToggles(size_t first, size_t last) {
+        for (size_t i = first; i < last; ++i) {
+            auto const& box = m_plan.toggles[i];
+            auto const c = centerOf(box);
             float const left = c.x - box.w / 2.f;
 
             // Card first, so it is drawn behind the toggle and the label.
@@ -350,28 +424,30 @@ protected:
             fitLabel(label, .45f, box.w - 38.f - 8.f);
             m_buttonMenu->addChildAtPosition(label, Anchor::Center, ccp(left + 38.f, c.y), ccp(0.f, .5f));
         }
+    }
 
-        // ---- Full settings ------------------------------------------------------------------
+    // ---- Full settings button and the credits (two lines) -----------------------------------
+    void buildFooter() {
         {
             auto* sprite = ButtonSprite::create("All Settings", "goldFont.fnt", "GJ_button_01.png", .8f);
             sprite->setScale(.75f);
             auto* button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(MinimumPopup::onAllSettings));
-            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(plan.settingsButton, size));
+            m_buttonMenu->addChildAtPosition(button, Anchor::Center, centerOf(m_plan.settingsButton));
         }
 
-        // ---- Credits (one line) -------------------------------------------------------------
-        {
-            std::string const line = std::string("by ") + kDeveloper + "  |  helper " + kHelper
-                                   + "  |  testers " + kTesters;
-            auto* text = CCLabelBMFont::create(line.c_str(), "chatFont.fnt");
-            fitLabel(text, .6f, plan.credits.w);
-            text->setOpacity(170);
-            m_buttonMenu->addChildAtPosition(text, Anchor::Center, centerOf(plan.credits, size));
-        }
+        auto const c = centerOf(m_plan.credits);
+        std::string const first = std::string("Developer ") + kDeveloper + "   |   Helper " + kHelper;
+        std::string const second = std::string("Testers: ") + kTesters;
 
-        this->refreshLive(0.f);
-        this->schedule(schedule_selector(MinimumPopup::refreshLive), 0.25f);
-        return true;
+        auto* line1 = CCLabelBMFont::create(first.c_str(), "chatFont.fnt");
+        fitLabel(line1, .62f, m_plan.credits.w);
+        line1->setOpacity(190);
+        m_buttonMenu->addChildAtPosition(line1, Anchor::Center, ccp(c.x, c.y + 6.5f));
+
+        auto* line2 = CCLabelBMFont::create(second.c_str(), "chatFont.fnt");
+        fitLabel(line2, .62f, m_plan.credits.w);
+        line2->setOpacity(190);
+        m_buttonMenu->addChildAtPosition(line2, Anchor::Center, ccp(c.x, c.y - 6.5f));
     }
 
     // Live numbers, refreshed four times a second while the popup is open.
@@ -382,7 +458,7 @@ protected:
         auto& stats = minimum::frameStats();
 
         uint32_t const fps = counters.fps.load();
-        char buffer[48];
+        char buffer[64];
 
         if (fps == 0) std::snprintf(buffer, sizeof(buffer), "--");
         else std::snprintf(buffer, sizeof(buffer), "%u", fps);
@@ -404,10 +480,20 @@ protected:
             m_lowLabel->setString(buffer);
         }
 
+        // Second line: frame time, plus whether Low Latency Mode is really running right now.
+        char const* sync = "";
+        if (cfg.enabled && cfg.lowLatency) {
+            switch (static_cast<minimum::LatencyState>(counters.latencyState.load(std::memory_order_relaxed))) {
+                case minimum::LatencyState::Active: sync = "  |  sync on"; break;
+                case minimum::LatencyState::Waiting: sync = "  |  sync waiting"; break;
+                case minimum::LatencyState::Unavailable: sync = "  |  sync n/a"; break;
+                default: break;
+            }
+        }
         double const frameMs = stats.averageFrameMs(60);
         if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
-        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms", frameMs);
-        else std::snprintf(buffer, sizeof(buffer), "frame -- ms");
+        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s", frameMs, sync);
+        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s", sync);
         if (m_lastFrame != buffer) {
             m_lastFrame = buffer;
             m_frameLabel->setString(buffer);
@@ -432,7 +518,7 @@ protected:
 
     void onPreset(CCObject* sender) {
         int const index = static_cast<CCNode*>(sender)->getTag();
-        if (index < 0 || index >= 4) return;
+        if (index < 0 || index >= static_cast<int>(kPresetCount)) return;
 
         if (index == 0) {
             // "Custom" keeps what the previous preset was doing instead of snapping back to
@@ -489,9 +575,10 @@ class $modify(MinimumPauseLayer, PauseLayer) {
         PauseLayer::customSetup();
 
         if (readCorner() == Corner::Hidden) return;
+        auto const started = std::chrono::steady_clock::now();
 
         auto* button = CCMenuItemSpriteExtra::create(
-            makeLogo(kButtonSize), this, menu_selector(MinimumPauseLayer::onMinimumButton)
+            makeButtonVisual(), this, menu_selector(MinimumPauseLayer::onMinimumButton)
         );
         button->setID("settings-button"_spr);
 
@@ -507,13 +594,18 @@ class $modify(MinimumPauseLayer, PauseLayer) {
         lowestMenuPriority(this, menu, lowest, found);
         if (found) menu->setTouchPriority(lowest - 1);
 
-        // First placement right away (so the button is never missing), then once more a frame
-        // later when the other mods have added their buttons too.
-        placeMenu(this, menu);
+        // The button starts in the chosen corner right away (so it is never missing). A frame
+        // later, when the other mods have added their buttons too, it slides to the nearest
+        // free spot. Only that second step looks at the other buttons, which keeps opening the
+        // pause menu cheap.
+        menu->setPosition(preferredPoint());
         this->addChild(menu, 100);
         if (auto* placer = ButtonPlacer::create(menu)) {
             this->addChild(placer);
         }
+
+        double const ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+        if (ms >= 10.0) log::info("Minimum: pause button setup took {:.1f} ms", ms);
     }
 
     void onMinimumButton(CCObject*) {

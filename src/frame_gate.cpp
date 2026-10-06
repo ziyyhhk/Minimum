@@ -96,26 +96,35 @@ namespace {
 
             // The FPS number is measured with the wall clock inside the drawScene hook,
             // not derived from the scheduler, so it is the real number of frames drawn.
-            char text[200];
+            char text[220];
             if (cfg.hudDetailed) {
+                char const* sync = "";
+                if (cfg.lowLatency) {
+                    switch (static_cast<minimum::LatencyState>(counters.latencyState.load(std::memory_order_relaxed))) {
+                        case minimum::LatencyState::Active: sync = " | sync on"; break;
+                        case minimum::LatencyState::Waiting: sync = " | sync waiting"; break;
+                        case minimum::LatencyState::Unavailable: sync = " | sync n/a"; break;
+                        default: break;
+                    }
+                }
                 uint32_t low = static_cast<uint32_t>(stats.lowFps(240) + 0.5);
                 double frameMs = stats.averageFrameMs(60);
 #ifdef GEODE_IS_ANDROID
                 double cpuMs = stats.averageCpuMs(60);
                 std::snprintf(
                     text, sizeof(text),
-                    "%s%u FPS%s | low %u | %.1f ms | cpu %.1f ms | logic %u/s | spikes %llu",
+                    "%s%u FPS%s | low %u | %.1f ms | cpu %.1f ms | logic %u/s | spikes %llu%s",
                     cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
                     low, frameMs, cpuMs, counters.logicFps.load(),
-                    static_cast<unsigned long long>(counters.spikes.load())
+                    static_cast<unsigned long long>(counters.spikes.load()), sync
                 );
 #else
                 std::snprintf(
                     text, sizeof(text),
-                    "%s%u FPS%s | low %u | %.1f ms | logic %u/s | spikes %llu",
+                    "%s%u FPS%s | low %u | %.1f ms | logic %u/s | spikes %llu%s",
                     cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
                     low, frameMs, counters.logicFps.load(),
-                    static_cast<unsigned long long>(counters.spikes.load())
+                    static_cast<unsigned long long>(counters.spikes.load()), sync
                 );
 #endif
             }
@@ -366,8 +375,22 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
 
         // Low latency mode: let the GPU catch up before the next frame starts, so input is
         // not stuck behind frames queued in the driver.
-        if (cfg.enabled && cfg.lowLatency && s_syncOk && focused && totalFrames >= 300) {
-            minimum::hardGpuSync();
+        {
+            using minimum::LatencyState;
+            LatencyState state = LatencyState::Off;
+            if (cfg.enabled && cfg.lowLatency) {
+                if (!minimum::hardGpuSyncAvailable()) {
+                    state = LatencyState::Unavailable;
+                }
+                else if (s_syncOk && focused && totalFrames >= 300) {
+                    state = LatencyState::Active;
+                    minimum::hardGpuSync();
+                }
+                else {
+                    state = LatencyState::Waiting;
+                }
+            }
+            counters.latencyState.store(static_cast<uint8_t>(state), std::memory_order_relaxed);
         }
 
         minimum::ensureHud(totalFrames);

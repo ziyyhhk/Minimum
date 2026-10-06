@@ -46,6 +46,7 @@ namespace minimum {
             c.skipIdleParticles = true;
             c.capParticles = true;
             c.particleCap = preset.particleCap;
+            if (preset.lowDetail) c.lowDetail = true;
 #ifdef GEODE_IS_WINDOWS
             c.backgroundThrottle = true;
             c.backgroundFps = preset.backgroundFps;
@@ -143,6 +144,7 @@ namespace minimum {
         mod->setSettingValue<bool>("skip-idle-particles", true);
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(preset.particleCap));
+        if (preset.lowDetail) mod->setSettingValue<bool>("low-detail", true);
 #ifdef GEODE_IS_WINDOWS
         mod->setSettingValue<bool>("background-throttle", true);
         mod->setSettingValue<int64_t>("background-fps", static_cast<int64_t>(preset.backgroundFps));
