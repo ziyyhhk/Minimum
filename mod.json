@@ -15,6 +15,11 @@
 		"performance",
 		"utility"
 	],
+	"resources": {
+		"sprites": [
+			"resources/logo_round.png"
+		]
+	},
 	"links": {
 		"source": "https://github.com/ziyyhhk/Minimum"
 	},

@@ -129,9 +129,16 @@ namespace {
 #endif
             }
             else {
+                // When the game updates its logic at a clearly different rate than it draws
+                // frames, show both, so the number can be compared with other FPS counters.
+                char logicText[24] = "";
+                uint32_t const logic = counters.logicFps.load(std::memory_order_relaxed);
+                if (minimum::logicRateDiffers(fps, logic)) {
+                    std::snprintf(logicText, sizeof(logicText), " | logic %u", logic);
+                }
                 std::snprintf(
-                    text, sizeof(text), "%s%u FPS%s",
-                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : ""
+                    text, sizeof(text), "%s%u FPS%s%s",
+                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "", logicText
                 );
             }
 
@@ -194,6 +201,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static uint32_t s_windowSlow = 0;
         static uint32_t s_fpsDrawn = 0;
         static uint32_t s_fpsAll = 0;
+        static uint64_t s_updatesSeen = 0;
         static clock::time_point s_fpsStart = clock::now();
         static minimum::LatencyGate s_latencyGate;
         static bool s_syncOk = false;
@@ -222,6 +230,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             s_windowFrames = 0;
             s_windowSlow = 0;
             s_lastDrawn = now;
+            s_updatesSeen = counters.schedulerUpdates.load(std::memory_order_relaxed);
             minimum::frameStats().clear();
         }
         bool const measurable = totalFrames >= 300 && focused && !resumed;
@@ -240,7 +249,14 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             if (span >= 0.5) {
                 double const fps = s_fpsDrawn / span;
                 counters.fps.store(static_cast<uint32_t>(fps + 0.5));
-                counters.logicFps.store(static_cast<uint32_t>(s_fpsAll / span + 0.5));
+
+                // Game logic steps per second, counted by the CCScheduler::update hook. If that
+                // hook has not run (it should always run), fall back to the loop iterations.
+                uint64_t const updates = counters.schedulerUpdates.load(std::memory_order_relaxed);
+                uint64_t const delta = updates >= s_updatesSeen ? updates - s_updatesSeen : 0;
+                s_updatesSeen = updates;
+                double const logic = delta > 0 ? static_cast<double>(delta) / span : s_fpsAll / span;
+                counters.logicFps.store(static_cast<uint32_t>(logic + 0.5));
 
                 // Low latency mode only runs while the game is holding its frame rate, and
                 // backs off for a growing amount of time when it costs frames (see

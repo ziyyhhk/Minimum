@@ -232,6 +232,15 @@ namespace minimum {
         return FpsBand::Bad;
     }
 
+    // The game can run its logic (scheduler updates) at a different rate than it draws frames,
+    // for example 240 updates per second with 60 frames drawn. Other FPS counters often show
+    // the update rate, so when the two are clearly apart the counter shows both.
+    inline bool logicRateDiffers(double drawFps, double logicRate) {
+        if (drawFps <= 0.0 || logicRate <= 0.0) return false;
+        double const tolerance = std::max(4.0, drawFps * 0.10);
+        return std::fabs(logicRate - drawFps) > tolerance;
+    }
+
     // ---------------------------------------------------------------------------------------
     // Presets
     // ---------------------------------------------------------------------------------------

@@ -100,6 +100,18 @@ namespace {
         CHECK(minimum::classifyFps(60.0, 0.0) == FpsBand::Good);
     }
 
+    void testLogicRate() {
+        CHECK(!minimum::logicRateDiffers(60.0, 60.0));
+        CHECK(!minimum::logicRateDiffers(60.0, 62.0));
+        CHECK(!minimum::logicRateDiffers(144.0, 150.0));
+        CHECK(minimum::logicRateDiffers(60.0, 240.0));
+        CHECK(minimum::logicRateDiffers(60.0, 30.0));
+        CHECK(minimum::logicRateDiffers(240.0, 60.0));
+        // No data yet: never show a made up number.
+        CHECK(!minimum::logicRateDiffers(0.0, 240.0));
+        CHECK(!minimum::logicRateDiffers(60.0, 0.0));
+    }
+
     void testPresets() {
         auto balanced = minimum::presetValues("Balanced");
         CHECK(balanced.known && balanced.particleCap == 256u && near(balanced.backgroundFps, 30.0) && !balanced.lowDetail);
@@ -248,6 +260,7 @@ namespace {
 int main() {
     testFrameStats();
     testBands();
+    testLogicRate();
     testPresets();
     testPopupPlan();
     testFindFreeSpot();
