@@ -17,6 +17,9 @@ add_library(${PROJECT_NAME} SHARED
   src/latency.cpp
   src/game_quality.cpp
   src/perf_hint.cpp
+  src/logo.cpp
+  src/logo_data.cpp
+  src/scheduler_count.cpp
   src/pause_menu.cpp
 )
 

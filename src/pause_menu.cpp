@@ -65,12 +65,10 @@ namespace {
         return Corner::TopRight;
     }
 
-    // The round mod logo, scaled so its height is `size`. Falls back to the square logo and
-    // then to a gold "M", so the button is never invisible.
+    // The round mod logo, scaled so its height is `size`. minimum::createLogoSprite never hands
+    // out the pink "missing texture" square; if even the built-in copy fails, a gold "M".
     CCNode* makeLogo(float size) {
-        CCSprite* logo = CCSprite::create("logo_round.png"_spr);
-        if (!logo) logo = CCSprite::create("logo.png"_spr);
-        if (logo) {
+        if (auto* logo = minimum::createLogoSprite()) {
             float height = logo->getContentSize().height;
             if (height > 0.f) logo->setScale(size / height);
             return logo;
@@ -458,7 +456,7 @@ protected:
         auto& stats = minimum::frameStats();
 
         uint32_t const fps = counters.fps.load();
-        char buffer[64];
+        char buffer[96];
 
         if (fps == 0) std::snprintf(buffer, sizeof(buffer), "--");
         else std::snprintf(buffer, sizeof(buffer), "%u", fps);
@@ -490,10 +488,15 @@ protected:
                 default: break;
             }
         }
+        char logic[24] = "";
+        uint32_t const logicRate = counters.logicFps.load(std::memory_order_relaxed);
+        if (minimum::logicRateDiffers(fps, logicRate)) {
+            std::snprintf(logic, sizeof(logic), "  |  logic %u", logicRate);
+        }
         double const frameMs = stats.averageFrameMs(60);
         if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
-        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s", frameMs, sync);
-        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s", sync);
+        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s", frameMs, logic, sync);
+        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s", logic, sync);
         if (m_lastFrame != buffer) {
             m_lastFrame = buffer;
             m_frameLabel->setString(buffer);

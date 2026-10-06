@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <minimum_logic.hpp>
 
+namespace cocos2d { class CCSprite; }
+
 // Minimum: shared state.
 //
 // Hooks in this mod run on the main (render) thread, some of them hundreds of
@@ -87,7 +89,11 @@ namespace minimum {
         // Measured with the wall clock inside the drawScene hook, refreshed twice a second.
         // fps = frames actually drawn per second, logicFps = game updates per second.
         std::atomic<uint32_t> fps{0};
+        // Scheduler updates (game logic steps) per second, counted by a hook on
+        // CCScheduler::update. Falls back to the number of frames when that hook has not run.
         std::atomic<uint32_t> logicFps{0};
+        // Raw number of scheduler updates so far (only the hook writes it).
+        std::atomic<uint64_t> schedulerUpdates{0};
         // True while the background throttle is limiting the draw rate.
         std::atomic<bool> throttled{false};
         // What Low Latency Mode is doing right now (see LatencyState). Written by the frame
@@ -128,6 +134,10 @@ namespace minimum {
 
     // False when no glFinish could be found on this device (the lookup runs on first call).
     bool hardGpuSyncAvailable();
+
+    // The round Minimum logo as a sprite: the packaged sprite when it is there, otherwise the
+    // copy built into the mod. Null only if both fail. Never the pink "missing texture" square.
+    cocos2d::CCSprite* createLogoSprite();
 
     // Particle cap that is actually applied right now: the configured cap, lowered
     // in steps by the adaptive cap when the game cannot hold the target FPS.

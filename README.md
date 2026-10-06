@@ -19,6 +19,10 @@ Pause a level and tap the logo. You get a live FPS card, five presets (Custom, B
 
 Fast alt-tab is left out of mobile on purpose. The save that happens when the app goes to the background is what protects your progress if the OS closes it.
 
+## What the FPS number means
+
+The big number is frames drawn per second, measured with the real clock. The game can run its logic at a different rate than it draws (for example 240 updates and 60 frames). When the two are clearly apart the counter adds `| logic N`. Other FPS counters often show that logic rate, so if a different mod shows a different number, compare it with this one.
+
 ## What to expect
 
 - A level that already holds your FPS cap will not run faster. Nothing beats the cap.
@@ -66,7 +70,8 @@ ctest --test-dir build-tests --output-on-failure
 - `src/pause_menu.cpp` pause menu button and popup
 - `src/particles.cpp` idle draw skipping, particle cap, adaptive cap
 - `src/latency.cpp`, `src/game_quality.cpp`, `src/perf_hint.cpp` low latency, low detail, Android CPU hint
-- `resources/logo_round.png` the round logo used for the pause menu button (`logo.png` stays the mod icon)
+- `resources/logo_round.png` the round logo used for the pause menu button, listed in `mod.json` under `resources`. `src/logo_data.cpp` holds a built-in copy of it as a backup. `logo.png` stays the mod icon.
+- `src/scheduler_count.cpp` counts game logic steps, so the FPS counter can show the logic rate next to the FPS
 - `src/system_tuning.cpp`, `src/background.cpp`, `src/app_delegate.cpp` Windows extras
 
 ## Credits
