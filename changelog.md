@@ -1,11 +1,15 @@
 # v3.2.1
 
-- New pause menu popup. It has a live FPS card (current FPS, 1% low, frame time), four preset buttons, six quick toggles, a button to the full settings and the credits. It also adapts to short screens so nothing gets cut off on a phone.
+- New pause menu popup. It has a live FPS card (current FPS, 1% low, frame time), five preset buttons, six quick toggles, a button to the full settings and the credits. It adapts to short screens so nothing gets cut off on a phone.
+- New: Super Performance preset. 16 particles, Low Detail Mode on and the lowest background frame rate. The plainest look and the fastest.
+- New: the pause menu button is now a smaller round logo (new `logo_round.png`) with a bigger invisible tap area, so it matches the other round buttons and is still easy to hit on a phone.
+- Fixed: the popup hitching when it opened. It now opens in small steps, one part per frame, and it no longer re-reads every setting when it opens. The pause menu button also does less work when the pause menu opens. If a step still takes more than 10 ms it is written to the Geode log as "Minimum popup: ... took ... ms".
 - New: Low Detail Mode toggle. Turns on the game's own low detail option while Minimum is on, and puts your old value back when you turn it off.
-- New: Low Latency Mode now works on Android and iOS too (it was desktop only).
+- New: Low Latency Mode works on Android and iOS too (it was desktop only). glFinish is looked up in several GL libraries and the result is logged. The popup and the Detailed FPS counter show `sync on`, `sync waiting` or `sync n/a`, so you can see if it is really running.
 - New: CPU Speed Hint on Android 13+. Tells the system how long each frame takes so the CPU speeds up before a heavy frame.
 - New: Target FPS is now a main setting. The FPS counter colors, the adaptive particle cap and the Android hint all use it.
-- Fixed: clicking Skip Idle Draws or Cap Particles in the popup while a preset was active did nothing, because the preset overwrote the click. It now leaves the preset first. Picking Custom keeps whatever the preset was doing.
+- New: credits now list Valicc and L4ZY as testers.
+- Fixed: clicking Skip Idle Draws, Cap Particles or Low Detail in the popup while a preset was active did nothing, because the preset overwrote the click. It now leaves the preset first. Picking Custom keeps whatever the preset was doing.
 - Fixed: locking the phone, switching apps or dragging the window could show a fake FPS drop, trigger a spike log line and make Low Latency Mode back off. Long gaps are now ignored and the measurements start over when you come back.
 - Fixed: FPS counter colors were fixed at 55 and 30, so a 30 FPS phone was always yellow. They now follow your Target FPS.
 - Changed: Adaptive Particle Cap is on by default, Frame Spike Logger is off by default.

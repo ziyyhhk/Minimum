@@ -2,7 +2,7 @@
 
 Makes Geometry Dash run smoother on PC, Mac, Android and iOS.
 
-Open the pause menu and tap the Minimum logo. You get a live FPS card, quick presets and the main toggles in one place.
+Open the pause menu and tap the Minimum logo. You get a live FPS card, five presets (up to Super Performance) and the main toggles in one place.
 
 - Skips drawing particle systems that are idle and caps how many particles a level can spawn
 - Live FPS counter with 1% low, so you can see stutter and not just the average
@@ -16,6 +16,6 @@ Don't use Draw Divide together with `mat.draw-divide`, both hook the same functi
 
 ## Credits
 
-Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk.
+Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk, Valicc, L4ZY.
 
 Draw Divide idea by qimiko / mat. Algebra Dash by ConfiG. Thanks to the Geode team.

@@ -2,7 +2,7 @@
 
 A performance mod for Geometry Dash 2.2081 (Geode 5.10+). Works on Windows, macOS, Android and iOS.
 
-Pause a level and tap the logo. You get a live FPS card, four presets, six quick toggles and a link to the full settings.
+Pause a level and tap the logo. You get a live FPS card, five presets (Custom, Balanced, Performance, Extreme, Super Performance), six quick toggles and a link to the full settings.
 
 ## What it does
 
@@ -24,6 +24,7 @@ Fast alt-tab is left out of mobile on purpose. The save that happens when the ap
 - A level that already holds your FPS cap will not run faster. Nothing beats the cap.
 - The gains are in particle heavy levels, on weaker phones and laptops, in Low Detail Mode, and while the game is in the background on PC.
 - Low Latency Mode makes the CPU wait for the GPU after each frame, which can get a click on screen a frame or two sooner. If the GPU is already the slow part it costs FPS, so Minimum only runs it while the game holds its frame rate and turns it off for 10 s, then 20 s, 40 s and so on if FPS drops. On a phone that is CPU bound it may do nothing.
+- To check it is running: turn on Stats Detail > Detailed and look for `sync on`, or open the Minimum popup, the frame line shows `sync on` / `sync waiting` / `sync n/a`. `n/a` means this device has no glFinish we could find (it is also written to the Geode log).
 - It is not sub-frame click timing. The *Click Between Frames* mod does that on Windows and works next to Minimum.
 - For the lowest latency also turn V-Sync off in the game's video settings and use the highest FPS cap you can hold.
 
@@ -65,10 +66,11 @@ ctest --test-dir build-tests --output-on-failure
 - `src/pause_menu.cpp` pause menu button and popup
 - `src/particles.cpp` idle draw skipping, particle cap, adaptive cap
 - `src/latency.cpp`, `src/game_quality.cpp`, `src/perf_hint.cpp` low latency, low detail, Android CPU hint
+- `resources/logo_round.png` the round logo used for the pause menu button (`logo.png` stays the mod icon)
 - `src/system_tuning.cpp`, `src/background.cpp`, `src/app_delegate.cpp` Windows extras
 
 ## Credits
 
-Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk.
+Developer: ziyyhhk. Helper: Rafa. Testers: Rafa, Broken Team, ziyyhhk, Valicc, L4ZY.
 
 Inspired by [Draw Divide](https://geode-sdk.org/mods/mat.draw-divide) (qimiko / mat, MIT) and [Algebra Dash](https://github.com/cgytrus/AlgebraDash) (ConfiG, MIT).

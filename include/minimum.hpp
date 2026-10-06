@@ -90,7 +90,15 @@ namespace minimum {
         std::atomic<uint32_t> logicFps{0};
         // True while the background throttle is limiting the draw rate.
         std::atomic<bool> throttled{false};
+        // What Low Latency Mode is doing right now (see LatencyState). Written by the frame
+        // hook, read by the FPS counter and the popup so the player can SEE whether it runs.
+        std::atomic<uint8_t> latencyState{0};
     };
+
+    // Off: the setting is off. Waiting: on, but not syncing right now (loading, or it backed
+    // off because FPS dropped). Active: syncing every frame. Unavailable: this device has no
+    // glFinish we could find, so the mode can not do anything.
+    enum class LatencyState : uint8_t { Off = 0, Waiting = 1, Active = 2, Unavailable = 3 };
 
     Config const& config();
     Counters& counters();
@@ -115,8 +123,11 @@ namespace minimum {
 
     // Hard GPU sync (glFinish) after a drawn frame. Trims the queue of frames the driver
     // keeps in flight, which can lower input-to-screen latency. Does nothing if the GL
-    // library has no glFinish.
+    // library has no glFinish. The lookup happens once, on first use, and is logged.
     void hardGpuSync();
+
+    // False when no glFinish could be found on this device (the lookup runs on first call).
+    bool hardGpuSyncAvailable();
 
     // Particle cap that is actually applied right now: the configured cap, lowered
     // in steps by the adaptive cap when the game cannot hold the target FPS.

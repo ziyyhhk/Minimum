@@ -31,14 +31,15 @@
 		},
 		"preset": {
 			"name": "Preset",
-			"description": "Quick profile for particles and the background frame rate. Balanced: 256 particles. Performance: 128. Extreme: 48 and thinner effects. Custom uses the settings below. Re-enter the level after changing it.",
+			"description": "Quick profile for particles and the background frame rate. Balanced: 256 particles. Performance: 128. Extreme: 48. Super Performance: 16 particles, Low Detail Mode on and the lowest background frame rate, the plainest look and the fastest. Custom uses the settings below. Re-enter the level after changing it.",
 			"type": "string",
 			"default": "Custom",
 			"one-of": [
 				"Custom",
 				"Balanced",
 				"Performance",
-				"Extreme"
+				"Extreme",
+				"Super Performance"
 			]
 		},
 		"adaptive-target-fps": {
@@ -94,7 +95,7 @@
 		},
 		"low-latency": {
 			"name": "Low Latency Mode",
-			"description": "Makes the CPU wait for the GPU after every frame so clicks show up sooner. How much it helps depends on the device, and on a slow GPU it can cost FPS. It only runs while the game holds its frame rate and switches itself off for a while if FPS drops. Off by default.",
+			"description": "Makes the CPU wait for the GPU after every frame so clicks show up sooner. Works on PC, Mac, Android and iOS. How much it helps depends on the device: on a slow GPU it can cost FPS, and on a phone that is limited by its CPU it may change nothing. It only runs while the game holds its frame rate and switches itself off for a while if FPS drops. Turn on Detailed in Stats Detail to see 'sync on' when it is running. Off by default.",
 			"type": "bool",
 			"default": false
 		},
@@ -136,7 +137,7 @@
 		},
 		"low-detail": {
 			"name": "Low Detail Mode",
-			"description": "Turns on the game's own Low Detail Mode while Minimum is on, which skips decoration effects like speed particles and the landing ring. Your saved Options are not changed, and it goes back to what you had when you turn this off. Takes full effect on the next attempt.",
+			"description": "Turns on the game's own Low Detail Mode while Minimum is on, which skips decoration effects like speed particles and the landing ring. Your saved Options are not changed, and it goes back to what you had when you turn this off. Takes full effect on the next attempt. The Super Performance preset turns this on for you.",
 			"type": "bool",
 			"default": false
 		},
@@ -284,7 +285,7 @@
 		},
 		"hud-detail": {
 			"name": "Stats Detail",
-			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, logic updates per second and spikes (plus CPU time on Android).",
+			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, logic updates per second, spikes and the Low Latency status (plus CPU time on Android).",
 			"type": "string",
 			"default": "Compact",
 			"one-of": [
