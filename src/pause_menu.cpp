@@ -103,6 +103,9 @@ namespace {
 
     // Collects the on-screen rectangle (in `layer` coordinates) of every visible button under
     // `node`, except the ones below `skip` (our own menu).
+    //
+    // A node with an invisible ancestor is never reported: the walk stops at the first invisible
+    // node, so nothing below it is visited at all (an invisible node hides its whole subtree).
     void collectBlockers(
         CCNode* layer, CCNode* node, CCNode* skip, float maxSize, std::vector<minimum::Box>& out
     ) {
@@ -252,6 +255,8 @@ protected:
     std::vector<PresetButton> m_presetButtons;
     minimum::PopupPlan m_plan;
     CCSize m_size;
+    // Five quick taps on the logo start / cancel the 60 s benchmark (hidden on purpose).
+    minimum::TapCounter m_logoTaps{5, 3.0};
     int m_stage = 0;
     CCLabelBMFont* m_fpsLabel = nullptr;
     CCLabelBMFont* m_lowLabel = nullptr;
@@ -314,8 +319,21 @@ protected:
         if (!Popup::init(m_plan.width, m_plan.height, "square01_001.png")) return false;
         this->setTitle("Minimum");
 
-        // Logo, top right, level with the title (the close button lives in the top left).
-        m_mainLayer->addChildAtPosition(makeLogo(28.f), Anchor::TopRight, ccp(-26.f, -22.f));
+        // On a screen too short even for the tightest layout the whole popup is scaled down.
+        this->applyFit();
+
+        // Logo, top right, level with the title (the close button lives in the top left). It is
+        // also the hidden benchmark switch: five quick taps (see onLogo).
+        {
+            constexpr float kLogoHit = 36.f;
+            auto* holder = CCNode::create();
+            holder->setContentSize({kLogoHit, kLogoHit});
+            auto* logo = makeLogo(28.f);
+            logo->setPosition({kLogoHit / 2.f, kLogoHit / 2.f});
+            holder->addChild(logo);
+            auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(MinimumPopup::onLogo));
+            m_buttonMenu->addChildAtPosition(button, Anchor::TopRight, ccp(-26.f, -22.f));
+        }
 
         this->buildLive();
         this->refreshLive(0.f);
@@ -326,6 +344,28 @@ protected:
 
         logSlow("opening frame", started);
         return true;
+    }
+
+    // Scales the popup node by the plan's fit scale (1 = nothing to do).
+    //
+    // Geode's open animation (the elastic "pop") may set the main layer's scale itself right after
+    // this popup is created, which would undo a scale set in init(). So the scale is applied
+    // again on the next frame, after show() has run, and any running animation on the node is
+    // dropped first. Only popups that need the shrink (fitScale < 1) are touched at all.
+    void applyFit() {
+        if (m_plan.fitScale >= 1.f) return;
+        m_mainLayer->setScale(m_plan.fitScale);
+        this->scheduleOnce(schedule_selector(MinimumPopup::reapplyFit), 0.f);
+    }
+
+    void reapplyFit(float) {
+        m_mainLayer->stopAllActions();
+        m_mainLayer->setScale(m_plan.fitScale);
+    }
+
+    void onLogo(CCObject*) {
+        double const now = std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
+        if (m_logoTaps.tap(now)) minimum::benchmarkToggle();
     }
 
     void buildStep(float) {
@@ -464,10 +504,17 @@ protected:
             m_lastFps = buffer;
             m_fpsLabel->setString(buffer);
         }
-        switch (minimum::classifyFps(fps, cfg.targetFps)) {
-            case minimum::FpsBand::Good: m_fpsLabel->setColor(ccc3(120, 255, 120)); break;
-            case minimum::FpsBand::Okay: m_fpsLabel->setColor(ccc3(255, 225, 90)); break;
-            case minimum::FpsBand::Bad: m_fpsLabel->setColor(ccc3(255, 100, 100)); break;
+        // 0 means "no measurement yet" (the number shows "--"), which is not the same as a bad
+        // frame rate, so it gets a neutral color instead of the red Bad band.
+        if (fps == 0) {
+            m_fpsLabel->setColor(ccc3(200, 200, 200));
+        }
+        else {
+            switch (minimum::classifyFps(fps, cfg.targetFps)) {
+                case minimum::FpsBand::Good: m_fpsLabel->setColor(ccc3(120, 255, 120)); break;
+                case minimum::FpsBand::Okay: m_fpsLabel->setColor(ccc3(255, 225, 90)); break;
+                case minimum::FpsBand::Bad: m_fpsLabel->setColor(ccc3(255, 100, 100)); break;
+            }
         }
 
         double const low = stats.lowFps(240);
@@ -493,13 +540,26 @@ protected:
         if (minimum::logicRateDiffers(fps, logicRate)) {
             std::snprintf(logic, sizeof(logic), "  |  logic %u", logicRate);
         }
+        // CPU-bound / GPU-bound over the last 60 frames (Android only, empty elsewhere: the
+        // frame hook only fills it where the stored CPU time is really CPU work).
+        char bottleneck[24] = "";
+        {
+            auto const label = minimum::bottleneckLabel(
+                static_cast<minimum::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))
+            );
+            if (!label.empty()) {
+                std::snprintf(bottleneck, sizeof(bottleneck), "  |  %.*s", static_cast<int>(label.size()), label.data());
+            }
+        }
         double const frameMs = stats.averageFrameMs(60);
         if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
-        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s", frameMs, logic, sync);
-        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s", logic, sync);
+        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s%s", frameMs, logic, sync, bottleneck);
+        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s%s", logic, sync, bottleneck);
         if (m_lastFrame != buffer) {
             m_lastFrame = buffer;
             m_frameLabel->setString(buffer);
+            // More text on this line now: keep it inside the live card, next to the FPS number.
+            fitLabel(m_frameLabel, .8f, m_plan.live.w - 120.f);
         }
     }
 

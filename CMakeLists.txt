@@ -3,7 +3,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(Minimum VERSION 3.2.1)
+project(Minimum VERSION 3.2.2)
 
 add_library(${PROJECT_NAME} SHARED
   src/main.cpp
@@ -17,6 +17,9 @@ add_library(${PROJECT_NAME} SHARED
   src/latency.cpp
   src/game_quality.cpp
   src/perf_hint.cpp
+  src/thermal.cpp
+  src/mobile_fps.cpp
+  src/benchmark.cpp
   src/logo.cpp
   src/logo_data.cpp
   src/scheduler_count.cpp

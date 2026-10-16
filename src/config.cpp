@@ -12,6 +12,12 @@ using namespace geode::prelude;
 // Settings that only exist on some platforms (see "platforms" in mod.json) are only
 // read on those platforms. Reading a setting that does not exist on the current
 // platform would log an error every time the config is refreshed.
+//
+// getSettingValue<T> must use the C++ value type of the setting's mod.json type, otherwise
+// Geode refuses the read (docs.geode-sdk.org/mods/settings):
+//   "bool" -> bool, "int" -> int64_t, "float" -> double, "string" -> std::string.
+// So "float" settings (hud-scale, background-volume-scale, visual-fps) are read as double on
+// purpose and narrowed to float once, below, after clamping.
 
 namespace minimum {
 
@@ -77,6 +83,9 @@ namespace minimum {
         int64_t cap = mod->getSettingValue<int64_t>("particle-cap");
         c.particleCap = static_cast<unsigned int>(std::clamp<int64_t>(cap, 4, 1000));
         c.adaptiveCap = mod->getSettingValue<bool>("adaptive-cap");
+        c.cullOffscreenParticles = mod->getSettingValue<bool>("cull-offscreen-particles");
+        int64_t spawnBudget = mod->getSettingValue<int64_t>("spawn-budget");
+        c.spawnBudget = static_cast<int>(std::clamp<int64_t>(spawnBudget, 0, 200));
         int64_t targetFps = mod->getSettingValue<int64_t>("adaptive-target-fps");
         c.targetFps = static_cast<double>(std::clamp<int64_t>(targetFps, 20, 360));
 
@@ -99,6 +108,22 @@ namespace minimum {
         c.androidCpuHint = mod->getSettingValue<bool>("android-cpu-hint");
 #else
         c.androidCpuHint = false;
+#endif
+
+#ifdef GEODE_IS_MOBILE
+        // Android and iOS only ("platforms": ["android", "ios"] in mod.json).
+        c.fpsUnlock = mod->getSettingValue<bool>("fps-unlock");
+        int64_t fpsLimit = mod->getSettingValue<int64_t>("fps-limit");
+        c.fpsLimit = static_cast<int>(std::clamp<int64_t>(fpsLimit, kFpsLimitMin, kFpsLimitMax));
+#else
+        c.fpsUnlock = false;
+#endif
+
+#ifdef GEODE_IS_DESKTOP
+        // Windows and macOS only ("platforms": ["win", "mac"] in mod.json).
+        c.preciseFrameLimit = mod->getSettingValue<bool>("precise-frame-limit");
+#else
+        c.preciseFrameLimit = false;
 #endif
 
 #ifdef GEODE_IS_WINDOWS

@@ -10,9 +10,13 @@ Pause a level and tap the logo. You get a live FPS card, five presets (Custom, B
 |---|:-:|:-:|:-:|:-:|
 | Pause menu popup, FPS counter (with 1% low) | yes | yes | yes | yes |
 | Skip idle particle draws, particle cap, adaptive cap | yes | yes | yes | yes |
+| Off-screen particle culling, spawn budget | yes | yes | yes | yes |
 | Low Latency Mode | yes | yes | yes | yes |
 | Low Detail Mode | yes | yes | yes | yes |
-| CPU speed hint (Android 13+) | - | - | yes | - |
+| CPU speed hint (Android 13+, API 33) | - | - | yes | - |
+| CPU-bound / GPU-bound readout, thermal response (Android 11+) | - | - | yes | - |
+| Unlock FPS (experimental) | - | - | yes | yes |
+| Precise frame limiter | yes | yes | - | - |
 | Hotkeys | yes | yes | - | - |
 | 1 ms timer, no power throttling, process priority | yes | - | - | - |
 | Background throttle, tab-out volume, fast alt-tab, Draw Divide | yes | - | - | - |
@@ -22,6 +26,31 @@ Fast alt-tab is left out of mobile on purpose. The save that happens when the ap
 ## What the FPS number means
 
 The big number is frames drawn per second, measured with the real clock. The game can run its logic at a different rate than it draws (for example 240 updates and 60 frames). When the two are clearly apart the counter adds `| logic N`. Other FPS counters often show that logic rate, so if a different mod shows a different number, compare it with this one.
+
+## The Detailed stats
+
+*Stats Detail > Detailed* shows three lines:
+
+1. the numbers you compare with other counters: FPS, 1% low, frame time, **worst** frame of the last half second, logic updates per second, spikes, Low Latency status (and on Android CPU time and `CPU-bound` / `GPU-bound`)
+2. the **proof line**: `skipped` (idle particle draws), `culled` (off-screen draws) and `capped` (pools) per second, `cap step` and the cap in use, Low Latency `trips`, and `thermal` while the thermal response is lowering the cap
+3. the totals since the game started: frames drawn, logic-only frames, idle draws skipped, culled draws, capped pools, budgeted systems
+
+`CPU-bound` means the CPU was busy for 85% or more of the last 60 frames. `GPU-bound` means less than 50% **and** Low Latency sync is running, because only then does waiting for the GPU show up as CPU idle time. It is shown on Android only: on the other platforms the measured frame work includes the wait for the display, so the number would not mean "CPU".
+
+## Particle features
+
+- **Skip Idle Draws** and **Particle Cap**: see above. **Adaptive Particle Cap** lowers the cap step by step when the game misses your Target FPS (only drawn frames count), and on Android one more step while the device is severely hot (back after 30 s of normal temperature).
+- **Cull Off-screen Particles** (on by default) skips the draw of systems that are completely off screen, with a margin. Updates always run, so nothing changes when they come back. Turn it off if an effect ever disappears near a screen edge.
+- **Spawn Budget** (off by default) limits new particle systems per frame during a level. Extra systems get a tiny pool instead of failing. Not active while a level loads.
+
+## Benchmark mode (hidden)
+
+Open the Minimum popup and tap the logo five times quickly. Minimum records the frame time of every drawn frame for 60 seconds and writes `benchmark-<unix time>.csv` (`frame,time_s,frame_ms`) to the mod's save folder (`Mod::getSaveDir()`, the `minimum.optimization` folder in Geode's mods save directory). Tap five times again to cancel. A notification tells you when it starts and when the file is saved. Only frames the stats line would also count are recorded (not the first 300 frames, not while unfocused).
+
+## Unlock FPS and the precise limiter
+
+- **Unlock FPS** (Android and iOS, off by default) asks the system for 1 / *FPS Limit* seconds per frame when that is shorter than what the game asks for. It does not touch game logic, timing or physics. The screen refresh rate and the system can still cap you (Geode's header documents the display link director as supporting only 1/60, 1/30 and 1/15 s intervals, so iOS may stay at 60). Check that game speed feels normal after turning it on.
+- **Precise Frame Limiter** (Windows and macOS, off by default) holds your Target FPS by sleeping until the frame deadline and spinning the last millisecond. It only runs while the game's own FPS cap is off and Draw Divide is off. Best with V-Sync off.
 
 ## What to expect
 
@@ -55,7 +84,7 @@ cmake --build build --config RelWithDebInfo
 
 The GitHub Actions workflow builds all five targets and merges them into one `.geode` file (artifact `Minimum-all-platforms`).
 
-Tests for the layout and frame statistics code need no SDK:
+Tests for the pure logic (layout, frame statistics, latency guard, adaptive cap, thermal guard, bottleneck classifier, culling math, spawn budget, frame limiter, benchmark) need no SDK. The CI workflow runs them too:
 
 ```
 cmake -S tests -B build-tests
@@ -65,12 +94,13 @@ ctest --test-dir build-tests --output-on-failure
 
 ## Layout
 
-- `include/minimum_logic.hpp` pure logic (frame statistics, presets, popup layout, latency guard). Unit tested.
+- `include/minimum_logic.hpp` pure logic (frame statistics, presets, popup layout and fit scale, latency guard, adaptive cap, thermal guard, bottleneck classifier, culling math, spawn budget, frame limiter, benchmark recorder). Unit tested in `tests/logic_test.cpp`.
 - `src/frame_gate.cpp` the `CCDirector::drawScene` hook: timing, FPS counter, background throttle, Draw Divide
 - `src/pause_menu.cpp` pause menu button and popup
-- `src/particles.cpp` idle draw skipping, particle cap, adaptive cap
+- `src/particles.cpp` idle draw skipping, particle cap, adaptive cap, off-screen culling, spawn budget
+- `src/thermal.cpp` Android thermal status (looked up at runtime), `src/mobile_fps.cpp` Unlock FPS (Android / iOS), `src/benchmark.cpp` benchmark mode
 - `src/latency.cpp`, `src/game_quality.cpp`, `src/perf_hint.cpp` low latency, low detail, Android CPU hint
-- `resources/logo_round.png` the round logo used for the pause menu button, listed in `mod.json` under `resources`. `src/logo_data.cpp` holds a built-in copy of it as a backup. `logo.png` stays the mod icon.
+- `resources/logo_round.png` the round logo used for the pause menu button, listed in `mod.json` under `resources`. `src/logo_data.cpp` holds a built-in copy of it as a backup (128 x 128, made by `python3 tools/embed_logo.py`, check it with `--check`). `logo.png` stays the mod icon.
 - `src/scheduler_count.cpp` counts game logic steps, so the FPS counter can show the logic rate next to the FPS
 - `src/system_tuning.cpp`, `src/background.cpp`, `src/app_delegate.cpp` Windows extras
 
