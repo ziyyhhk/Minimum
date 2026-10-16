@@ -28,6 +28,11 @@ namespace minimum {
         bool skipIdleParticles = true;
         bool capParticles = true;
         unsigned int particleCap = 128;
+        // Skip the draw (never the update) of particle systems that are completely off screen.
+        bool cullOffscreenParticles = true;
+        // Most particle systems the game may create per frame during a level, 0 = off. Systems
+        // beyond it are still created, with a tiny pool (see spawnBudgetTotal).
+        int spawnBudget = 0;
 
         // Background (game window not focused)
         bool backgroundThrottle = true;
@@ -71,6 +76,13 @@ namespace minimum {
         // Android only: tell the system how much CPU time each frame needs.
         bool androidCpuHint = true;
 
+        // Android / iOS only (not read elsewhere): ask the system for a higher frame rate.
+        bool fpsUnlock = false;
+        int fpsLimit = 120;
+
+        // Windows / macOS only (not read elsewhere): precise frame limiter.
+        bool preciseFrameLimit = false;
+
         // Other
         bool fastAltTab = true;
     };
@@ -83,9 +95,31 @@ namespace minimum {
         std::atomic<uint64_t> idleParticleDrawsSkipped{0};
         std::atomic<uint64_t> particlePoolsCapped{0};
         std::atomic<uint64_t> particleSystemsCreated{0};
+        // Draws skipped because the system was completely off screen (cull-offscreen-particles).
+        std::atomic<uint64_t> particleDrawsCulled{0};
+        // Particle systems created over the per-frame spawn budget (they got a tiny pool).
+        std::atomic<uint64_t> spawnsBudgeted{0};
         std::atomic<uint64_t> spikes{0};
-        // Longest gap between two frames since the stats line last read it (microseconds).
+        // Counts one per call of the frame hook, drawn or not. Used to tell "this frame" from
+        // the next one (spawn budget).
+        std::atomic<uint64_t> frameIndex{0};
+        // Frame hook calls in a row that started with a level open (0 outside a level). The spawn
+        // budget waits for this to reach kSpawnBudgetGraceFrames so it never touches level loading.
+        std::atomic<uint32_t> framesInLevel{0};
+        // Longest gap between two measured frames since the stats line last read it
+        // (microseconds). The stats line takes it with exchange(0) twice a second, so the value
+        // shown is the worst frame of the last half second.
         std::atomic<uint32_t> worstFrameUs{0};
+        // Per second, refreshed twice a second with the fps number (see ratePerSecond).
+        std::atomic<uint32_t> skippedPerSec{0};
+        std::atomic<uint32_t> cappedPerSec{0};
+        std::atomic<uint32_t> culledPerSec{0};
+        // Low Latency Mode backoff trips (LatencyGate::trips, decays after 2 minutes clean).
+        std::atomic<uint32_t> latencyTrips{0};
+        // What the bottleneck readout says right now (a minimum::Bottleneck).
+        std::atomic<uint8_t> bottleneck{0};
+        // True while the thermal guard is lowering the particle cap (Android).
+        std::atomic<bool> thermal{false};
         // Measured with the wall clock inside the drawScene hook, refreshed twice a second.
         // fps = frames actually drawn per second, logicFps = game updates per second.
         std::atomic<uint32_t> fps{0};
@@ -143,9 +177,35 @@ namespace minimum {
     // in steps by the adaptive cap when the game cannot hold the target FPS.
     unsigned int effectiveParticleCap();
 
-    // Fed once per second by the frame hook: how many frames were measured and how
-    // many of them were slow (longer than 1.5x the target frame time).
-    void noteFrameWindow(uint32_t frames, uint32_t slowFrames);
+    // Fed once per second by the frame hook: how many DRAWN frames were measured and how many
+    // of them were slow (see slowFrameThresholdMs). Logic-only frames are not counted.
+    void noteFrameWindow(uint32_t drawnFrames, uint32_t slowFrames);
+
+    // The step the particle cap is at right now (0 = the configured cap), adaptive cap and
+    // thermal guard together. For the stats line.
+    int currentCapStep();
+
+    // Fed every couple of seconds by the frame hook with the device's thermal status (see
+    // ThermalGuard for the values; -1 = unknown) and the current time in seconds.
+    void noteThermalStatus(int status, double nowSeconds);
+
+    // Android 11+ (API 30): the device's thermal status through AThermal_*, resolved at runtime.
+    // -1 when it is not available (older Android, other platforms). Not free (it asks a system
+    // service), so call it every few seconds, never every frame.
+    int readThermalStatus();
+
+    // Android / iOS: makes the system frame interval match the "Unlock FPS" settings. Only does
+    // work when the wanted state changed, safe to call after every config refresh. No-op elsewhere.
+    void applyFrameUnlock();
+
+    // Benchmark mode: records 60 s of frame times to a CSV in the mod's save directory.
+    // benchmarkToggle() starts a run (or cancels the one that is running). benchmarkFrame() is
+    // called by the frame hook for every drawn frame and does nothing when no run is active.
+    bool benchmarkActive();
+    void benchmarkToggle();
+    void benchmarkFrame(double nowSeconds, double frameMs);
+    // Seconds into the running benchmark, 0 when none runs.
+    double benchmarkElapsed(double nowSeconds);
 
     // Windows only: 1 ms timer resolution, opt out of power throttling, process
     // priority. Only does work when the wanted state differs from the applied

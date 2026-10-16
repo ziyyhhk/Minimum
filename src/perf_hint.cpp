@@ -17,11 +17,14 @@ using namespace geode::prelude;
 // that is suddenly heavier than the one before arrives while the CPU is still ramping up,
 // which is one common source of stutter on phones.
 //
-// Android 12+ has an API for this (ADPF, "performance hints"): the game tells the system how
+// Android has an API for this (ADPF, "performance hints"): the game tells the system how
 // long a frame should take and how long the last one really took on the CPU, and the system
-// picks the CPU speed ahead of time. Android 13 exposes it to native code as
-// APerformanceHint_*. The functions are looked up at runtime, so the mod still loads (and
-// simply does nothing) on older versions and on devices that do not provide the service.
+// picks the CPU speed ahead of time. The Java class (PerformanceHintManager) is in Android 12,
+// but the native API, APerformanceHint_*, is declared __INTRODUCED_IN(__ANDROID_API_T__) in
+// the NDK's <android/performance_hint.h>: API level 33, which is Android 13. That is the
+// level that matters here, because this file only uses the native functions.
+// The functions are looked up at runtime, so the mod still loads (and simply does nothing)
+// on older versions and on devices that do not provide the service.
 //
 // It changes how fast the CPU runs, nothing else. No game logic, timing or physics is touched.
 

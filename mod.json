@@ -8,13 +8,19 @@
 	},
 	"id": "minimum.optimization",
 	"name": "Minimum",
-	"version": "v3.2.1",
+	"version": "v3.2.2",
 	"developer": "ziyyhhk",
 	"description": "Makes Geometry Dash run smoother. It skips drawing idle particles, limits how many particles a level can spawn, and adds a small menu to the pause screen with a live FPS counter and a few quick toggles. There are also options for lower input lag, plus extra tweaks on Windows. Works on PC, Mac, Android and iOS. Only changes how things are drawn, never the gameplay.",
 	"tags": [
 		"performance",
 		"utility"
 	],
+	"incompatibilities": {
+		"mat.draw-divide": {
+			"breaking": false,
+			"version": ">=v1.0.0"
+		}
+	},
 	"resources": {
 		"sprites": [
 			"resources/logo_round.png"
@@ -136,6 +142,32 @@
 			"default": true,
 			"enable-if": "cap-particles"
 		},
+		"cull-offscreen-particles": {
+			"name": "Cull Off-screen Particles",
+			"description": "Skips drawing particle systems that are completely off screen (with a safety margin). Only the drawing is skipped, the particles still update, so effects look the same when they come back into view. Turn it off if an effect ever vanishes near the edge of the screen.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win",
+				"mac",
+				"android",
+				"ios"
+			]
+		},
+		"spawn-budget": {
+			"name": "Spawn Budget",
+			"description": "Max new particle systems per frame while you are in a level, 0 = off. Systems created beyond the budget still appear, but with a tiny particle pool. Can smooth frames where a level spawns a lot of effects at once, at the cost of weaker effects on those frames. Only affects systems created after you change it.",
+			"type": "int",
+			"min": 0,
+			"max": 200,
+			"default": 0,
+			"platforms": [
+				"win",
+				"mac",
+				"android",
+				"ios"
+			]
+		},
 		"title-detail": {
 			"type": "title",
 			"name": "Detail"
@@ -155,12 +187,43 @@
 		},
 		"android-cpu-hint": {
 			"name": "CPU Speed Hint",
-			"description": "Tells Android how long each frame takes so it can raise the CPU speed before a heavy frame arrives, which helps with stutter. Needs Android 13 or newer, does nothing on older versions. May use a bit more battery.",
+			"description": "Tells Android how long each frame takes so it can raise the CPU speed before a heavy frame arrives, which helps with stutter. Needs Android 13 (API 33) or newer, does nothing on older versions. May use a bit more battery.",
 			"type": "bool",
 			"default": true,
 			"platforms": [
 				"android"
 			]
+		},
+		"title-frame-rate": {
+			"type": "title",
+			"name": "Frame Rate (Android / iOS)",
+			"platforms": [
+				"android",
+				"ios"
+			]
+		},
+		"fps-unlock": {
+			"name": "Unlock FPS",
+			"description": "OFF by default. Asks the system for a higher frame rate than the game's usual 60. Only helps on a screen that can show more, and the system can still lower it. Uses more battery. Experimental: if game speed or anything else feels off, turn it off.",
+			"type": "bool",
+			"default": false,
+			"platforms": [
+				"android",
+				"ios"
+			]
+		},
+		"fps-limit": {
+			"name": "FPS Limit",
+			"description": "The frame rate to ask the system for while Unlock FPS is on. Set it to your screen's refresh rate (90, 120, 144...).",
+			"type": "int",
+			"min": 30,
+			"max": 240,
+			"default": 120,
+			"platforms": [
+				"android",
+				"ios"
+			],
+			"enable-if": "fps-unlock"
 		},
 		"title-system": {
 			"type": "title",
@@ -278,6 +341,24 @@
 			],
 			"enable-if": "draw-divide"
 		},
+		"title-pacing": {
+			"type": "title",
+			"name": "Frame Pacing (advanced, Windows / macOS)",
+			"platforms": [
+				"win",
+				"mac"
+			]
+		},
+		"precise-frame-limit": {
+			"name": "Precise Frame Limiter",
+			"description": "OFF by default. Holds your Target FPS by sleeping until the frame deadline and then spinning for the last millisecond, which gives steadier frame times than a plain sleep. Only runs while the game's own FPS cap is off and Draw Divide is off, and works best with VSync off. Uses a little more CPU.",
+			"type": "bool",
+			"default": false,
+			"platforms": [
+				"win",
+				"mac"
+			]
+		},
 		"title-diagnostics": {
 			"type": "title",
 			"name": "Diagnostics"
@@ -290,7 +371,7 @@
 		},
 		"hud-detail": {
 			"name": "Stats Detail",
-			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, logic updates per second, spikes and the Low Latency status (plus CPU time on Android).",
+			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, worst frame, logic updates per second, spikes and the Low Latency status, a proof line (skipped / culled / capped particle draws per second, particle cap step, Low Latency trips, thermal) and a totals line. On Android it also shows CPU time and a CPU-bound / GPU-bound readout.",
 			"type": "string",
 			"default": "Compact",
 			"one-of": [
