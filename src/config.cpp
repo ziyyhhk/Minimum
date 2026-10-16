@@ -13,11 +13,16 @@ using namespace geode::prelude;
 // read on those platforms. Reading a setting that does not exist on the current
 // platform would log an error every time the config is refreshed.
 //
-// getSettingValue<T> must use the C++ value type of the setting's mod.json type, otherwise
-// Geode refuses the read (docs.geode-sdk.org/mods/settings):
-//   "bool" -> bool, "int" -> int64_t, "float" -> double, "string" -> std::string.
-// So "float" settings (hud-scale, background-volume-scale, visual-fps) are read as double on
-// purpose and narrowed to float once, below, after clamping.
+// Type check against mod.json (Geode maps "int" to int64_t, and "float" to a double setting
+// value, so a float setting is read with getSettingValue<float> and converted once here):
+//   bool   : mod-enabled, skip-idle-particles, cap-particles, adaptive-cap, cull-offscreen-particles,
+//            spike-logger, show-stats, low-latency, low-detail, android-cpu-hint, fps-unlock,
+//            background-throttle, background-volume, draw-divide, timer-resolution,
+//            disable-power-throttling, precise-frame-limit, fast-alt-tab
+//   int    : particle-cap, adaptive-target-fps, spike-threshold-ms, hud-opacity, spawn-budget,
+//            fps-limit, background-fps
+//   float  : hud-scale, background-volume-scale, visual-fps
+//   string : preset, pause-button-corner, hud-detail, hud-corner, process-priority
 
 namespace minimum {
 
@@ -84,8 +89,8 @@ namespace minimum {
         c.particleCap = static_cast<unsigned int>(std::clamp<int64_t>(cap, 4, 1000));
         c.adaptiveCap = mod->getSettingValue<bool>("adaptive-cap");
         c.cullOffscreenParticles = mod->getSettingValue<bool>("cull-offscreen-particles");
-        int64_t spawnBudget = mod->getSettingValue<int64_t>("spawn-budget");
-        c.spawnBudget = static_cast<int>(std::clamp<int64_t>(spawnBudget, 0, 200));
+        int64_t budget = mod->getSettingValue<int64_t>("spawn-budget");
+        c.spawnBudget = static_cast<unsigned int>(std::clamp<int64_t>(budget, 0, 500));
         int64_t targetFps = mod->getSettingValue<int64_t>("adaptive-target-fps");
         c.targetFps = static_cast<double>(std::clamp<int64_t>(targetFps, 20, 360));
 
@@ -96,8 +101,8 @@ namespace minimum {
         c.showStats = mod->getSettingValue<bool>("show-stats");
         c.hudDetailed = mod->getSettingValue<std::string>("hud-detail") == "Detailed";
         c.hudCorner = parseCorner(mod->getSettingValue<std::string>("hud-corner"));
-        double hudScale = mod->getSettingValue<double>("hud-scale");
-        c.hudScale = static_cast<float>(std::clamp(hudScale, 0.2, 2.0));
+        float hudScale = mod->getSettingValue<float>("hud-scale");
+        c.hudScale = std::clamp(hudScale, 0.2f, 2.0f);
         int64_t hudOpacity = mod->getSettingValue<int64_t>("hud-opacity");
         c.hudOpacity = static_cast<uint8_t>(std::clamp<int64_t>(hudOpacity, 20, 255));
 
@@ -111,16 +116,17 @@ namespace minimum {
 #endif
 
 #ifdef GEODE_IS_MOBILE
-        // Android and iOS only ("platforms": ["android", "ios"] in mod.json).
+        // Android and iOS only: the frame rate asked from the system.
         c.fpsUnlock = mod->getSettingValue<bool>("fps-unlock");
         int64_t fpsLimit = mod->getSettingValue<int64_t>("fps-limit");
-        c.fpsLimit = static_cast<int>(std::clamp<int64_t>(fpsLimit, kFpsLimitMin, kFpsLimitMax));
+        c.fpsLimit = static_cast<int>(std::clamp<int64_t>(fpsLimit, 30, 240));
 #else
         c.fpsUnlock = false;
+        c.fpsLimit = 120;
 #endif
 
 #ifdef GEODE_IS_DESKTOP
-        // Windows and macOS only ("platforms": ["win", "mac"] in mod.json).
+        // Windows and macOS only: the precise frame limiter.
         c.preciseFrameLimit = mod->getSettingValue<bool>("precise-frame-limit");
 #else
         c.preciseFrameLimit = false;
@@ -132,12 +138,12 @@ namespace minimum {
         int64_t bgFps = mod->getSettingValue<int64_t>("background-fps");
         c.backgroundFps = static_cast<double>(std::clamp<int64_t>(bgFps, 1, 60));
         c.backgroundVolume = mod->getSettingValue<bool>("background-volume");
-        double scale = mod->getSettingValue<double>("background-volume-scale");
-        c.backgroundVolumeScale = static_cast<float>(std::clamp(scale, 0.0, 1.0));
+        float scale = mod->getSettingValue<float>("background-volume-scale");
+        c.backgroundVolumeScale = std::clamp(scale, 0.0f, 1.0f);
 
         c.drawDivide = mod->getSettingValue<bool>("draw-divide");
-        double visual = mod->getSettingValue<double>("visual-fps");
-        c.visualFps = std::clamp(visual, 30.0, 360.0);
+        float visual = mod->getSettingValue<float>("visual-fps");
+        c.visualFps = std::clamp(static_cast<double>(visual), 30.0, 360.0);
 
         c.timerResolution = mod->getSettingValue<bool>("timer-resolution");
         c.disablePowerThrottling = mod->getSettingValue<bool>("disable-power-throttling");

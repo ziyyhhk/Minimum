@@ -1,7 +1,9 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCParticleSystemQuad.hpp>
 #include <algorithm>
+#include <cmath>
 #include <minimum.hpp>
+#include <minimum_logic.hpp>
 
 using namespace geode::prelude;
 
@@ -23,158 +25,169 @@ using namespace geode::prelude;
 //
 // 3. Adaptive cap (opt-in). If the game keeps missing the target FPS, the cap is
 //    lowered in steps (cap, cap/2, cap/4, cap/8, never below 16) and raised again
-//    after the game has been smooth for a while. Only affects systems created
-//    afterwards, which in a level is constantly (orbs, pads, death effects, trails).
-//    The decision itself lives in minimum_logic.hpp (AdaptiveCap) and is unit tested.
+//    after the game has been smooth for a while. The step decisions live in
+//    minimum_logic.hpp (AdaptiveCapGovernor) and are unit tested. Only affects
+//    systems created afterwards. Visual only.
 //
-// 4. Thermal response (Android). While the device reports a severe thermal status the cap
-//    is lowered by one more step, and given back after 30 s of nominal temperature
-//    (ThermalGuard in minimum_logic.hpp).
+// 4. Thermal response (Android, opt-in with the adaptive cap). While the phone reports
+//    SEVERE or worse, the cap drops one step at once and then further steps are
+//    taken at most every 5 s. It recovers after 30 s of nominal temperature. The rules
+//    are in ThermalGovernor (minimum_logic.hpp). The status is polled once a second
+//    (see pollThermal in perf_hint.cpp) and not taken from a listener, because a
+//    listener would run on a system thread.
 //
-// 5. Off-screen culling. The draw of a system whose particles are all clearly outside the
-//    screen is skipped. update() is never skipped, so emission and particle lifetimes run
-//    exactly as before and nothing "restarts" when the system comes back into view.
-//    The bounds come from the quads the system already built for drawing, so they are what
-//    would have been drawn, whatever the position type (free / relative / grouped).
+// 5. Spawn budget (opt-in). Only during a level: after `spawnBudget` particle systems have
+//    been created in one frame, further systems still exist but get a pool of 4.
 //
-// 6. Spawn budget (opt-in). Caps how many systems are created per frame during a level.
-//    Systems over the budget are still created (the game does not expect a failed create),
-//    just with a tiny pool.
+// 6. Off-screen culling (opt-in). A relative-position system whose reach (see
+//    particleReach) does not touch the visible rectangle is not drawn. Its update still
+//    runs, so emission and motion keep their timing and look the same when it comes back
+//    on screen. Free and grouped systems are always drawn, because their particles are not
+//    placed relative to the emitter and no safe bound can be computed for them.
 //
-// All of this is visual only: nothing here touches gameplay, timing or physics.
+// Nothing here touches gameplay, timing or physics.
 
 namespace minimum {
 
     namespace {
-        AdaptiveCap g_adaptive;
-        ThermalGuard g_thermal;
+        AdaptiveCapGovernor g_adaptive;
+        ThermalGovernor g_thermal;
+        // particleSystemsCreated when the current frame hook call started (see particleFrameBegin).
+        uint64_t g_frameCreatedBase = 0;
+    }
+
+    void particleFrameBegin() {
+        g_frameCreatedBase = counters().particleSystemsCreated.load(std::memory_order_relaxed);
     }
 
     int currentCapStep() {
-        return combinedCapStep(g_adaptive.step(), g_thermal.steps());
+        return combinedCapStep(g_adaptive.step(), g_thermal.step());
+    }
+
+    int thermalCapStep() {
+        return g_thermal.step();
     }
 
     unsigned int effectiveParticleCap() {
-        return capForStep(config().particleCap, currentCapStep());
+        return cappedPoolSize(config().particleCap, currentCapStep());
     }
 
-    void noteFrameWindow(uint32_t drawnFrames, uint32_t slowFrames) {
+    void noteFrameWindow(uint32_t frames, uint32_t slowFrames) {
         auto const& cfg = config();
         if (!cfg.enabled || !cfg.capParticles || !cfg.adaptiveCap) {
             g_adaptive.reset();
             return;
         }
-        g_adaptive.update(drawnFrames, slowFrames);
+        g_adaptive.noteWindow(frames, slowFrames);
     }
 
-    void noteThermalStatus(int status, double nowSeconds) {
+    void noteThermalStatus(int status, double nowSec) {
         auto const& cfg = config();
-        if (!cfg.enabled || !cfg.capParticles) {
+        if (!cfg.enabled || !cfg.capParticles || !cfg.adaptiveCap) {
             g_thermal.reset();
+            return;
         }
-        else {
-            g_thermal.update(status, nowSeconds);
-        }
-        counters().thermal.store(g_thermal.throttling(), std::memory_order_relaxed);
+        g_thermal.update(status, nowSec);
     }
 
 }
 
 namespace {
 
-    unsigned int cappedTotal(unsigned int requested) {
-        auto const& cfg = minimum::config();
-        unsigned int cap = minimum::effectiveParticleCap();
-        if (!cfg.enabled || !cfg.capParticles || requested <= cap) {
-            return requested;
-        }
-        ++minimum::counters().particlePoolsCapped;
-        return cap;
+    // Particle systems created earlier in this frame hook call (before the one being created).
+    uint64_t createdEarlierThisFrame() {
+        uint64_t const total = minimum::counters().particleSystemsCreated.load(std::memory_order_relaxed);
+        return total >= minimum::g_frameCreatedBase ? total - minimum::g_frameCreatedBase : 0;
     }
 
-    // Per frame accounting for the spawn budget. "Frame" = one call of the frame hook.
-    uint64_t g_budgetFrame = ~0ull;
-    uint64_t g_budgetBase = 0;
-
-    // `createdBefore` is how many systems existed (were created) before the one being created.
-    unsigned int budgetedTotal(unsigned int requested, uint64_t createdBefore) {
+    // The pool size a system really gets: the spawn budget first, then the cap. Counts every
+    // system whose pool was made smaller.
+    unsigned int limitedPool(unsigned int requested, uint64_t createdEarlier) {
         auto const& cfg = minimum::config();
-        if (!cfg.enabled || cfg.spawnBudget <= 0) return requested;
+        if (!cfg.enabled) return requested;
 
-        auto& counters = minimum::counters();
-        // Only during a level, and not while it loads (see kSpawnBudgetGraceFrames).
-        if (!minimum::spawnBudgetActive(counters.framesInLevel.load(std::memory_order_relaxed))) return requested;
-
-        uint64_t const frame = counters.frameIndex.load(std::memory_order_relaxed);
-        if (frame != g_budgetFrame) {
-            g_budgetFrame = frame;
-            g_budgetBase = createdBefore;
+        unsigned int pool = requested;
+        if (cfg.spawnBudget > 0 && PlayLayer::get() != nullptr) {
+            pool = minimum::budgetedPoolSize(pool, createdEarlier, cfg.spawnBudget);
         }
-        unsigned int const total = minimum::spawnBudgetTotal(requested, createdBefore - g_budgetBase, cfg.spawnBudget);
-        if (total < requested) ++counters.spawnsBudgeted;
-        return total;
+        if (cfg.capParticles) {
+            pool = std::min(pool, minimum::effectiveParticleCap());
+        }
+        if (pool < requested) ++minimum::counters().particlePoolsCapped;
+        return pool;
+    }
+
+    // True when the system is a relative-position system whose reach does not touch the
+    // visible rectangle. Every number comes from the cocos2d header of this game version
+    // (loader/include/Geode/cocos/particle_nodes/CCParticleSystem.h). Degenerate transforms and
+    // NaN values answer "not off screen", so the system is drawn.
+    bool isFarOffScreen(CCParticleSystemQuad* system) {
+        if (system->getPositionType() != kCCPositionTypeRelative) return false;
+
+        // World space scale of the emitter: how far one local unit moves on screen.
+        CCPoint const origin = system->convertToWorldSpace(ccp(0.f, 0.f));
+        CCPoint const unitX = system->convertToWorldSpace(ccp(1.f, 0.f));
+        CCPoint const unitY = system->convertToWorldSpace(ccp(0.f, 1.f));
+        double const scale = std::max(
+            std::hypot(unitX.x - origin.x, unitX.y - origin.y),
+            std::hypot(unitY.x - origin.x, unitY.y - origin.y)
+        );
+        if (!std::isfinite(scale) || scale <= 0.0) return false;
+
+        CCPoint const& gravity = system->getGravity();
+        CCPoint const& source = system->getSourcePosition();
+        CCPoint const& posVar = system->getPosVar();
+
+        minimum::ParticleBounds bounds;
+        bounds.speed = std::fabs(system->getSpeed()) + std::fabs(system->getSpeedVar());
+        bounds.life = std::fabs(system->getLife()) + std::fabs(system->getLifeVar());
+        bounds.accel = std::hypot(gravity.x, gravity.y)
+                     + std::fabs(system->getRadialAccel()) + std::fabs(system->getRadialAccelVar())
+                     + std::fabs(system->getTangentialAccel()) + std::fabs(system->getTangentialAccelVar());
+        bounds.radius = std::max(
+            std::fabs(system->getStartRadius()) + std::fabs(system->getStartRadiusVar()),
+            std::fabs(system->getEndRadius()) + std::fabs(system->getEndRadiusVar())
+        );
+        bounds.posVar = std::hypot(posVar.x, posVar.y);
+        bounds.sourceLength = std::hypot(source.x, source.y);
+        bounds.maxSize = std::max(
+            std::fabs(system->getStartSize()) + std::fabs(system->getStartSizeVar()),
+            std::fabs(system->getEndSize()) + std::fabs(system->getEndSizeVar())
+        );
+
+        float const reach = minimum::particleReach(bounds) * static_cast<float>(scale);
+        if (!std::isfinite(reach)) return false;
+
+        CCSize const size = CCDirector::get()->getVisibleSize();
+        CCPoint const visibleOrigin = CCDirector::get()->getVisibleOrigin();
+        minimum::Box const view{visibleOrigin.x, visibleOrigin.y, size.width, size.height};
+        minimum::Vec2 const center{origin.x, origin.y};
+        return !minimum::squareTouches(center, reach, view);
     }
 
 }
 
 struct ParticleOpt : Modify<ParticleOpt, CCParticleSystemQuad> {
     bool initWithTotalParticles(unsigned int total, bool flag) {
-        // Counted so the spike logger can tell "a frame was slow because it created N particle systems",
-        // and so the spawn budget knows how many were created earlier in this frame.
-        uint64_t const createdBefore = minimum::counters().particleSystemsCreated.fetch_add(1, std::memory_order_relaxed);
-        return CCParticleSystemQuad::initWithTotalParticles(budgetedTotal(cappedTotal(total), createdBefore), flag);
+        // Counted so the spike logger can tell "a frame was slow because it created N particle systems".
+        uint64_t const earlier = createdEarlierThisFrame();
+        ++minimum::counters().particleSystemsCreated;
+        return CCParticleSystemQuad::initWithTotalParticles(limitedPool(total, earlier), flag);
     }
 
     void setTotalParticles(unsigned int total) {
-        CCParticleSystemQuad::setTotalParticles(cappedTotal(total));
-    }
-
-    // True when every live particle of this system is clearly outside the screen.
-    //
-    // Reads the quads the system built in its last update(): those are exactly what draw()
-    // would send to the GPU, in the node's local space. Their bounding box is moved to world
-    // space with the node's local-to-world transform (read with three point conversions, which
-    // is exact for the 2D transforms nodes have) and compared with the screen plus a margin.
-    // When anything is not as expected (no quads, nothing alive, non finite numbers) it says
-    // "not off screen" and the system is drawn as usual.
-    bool particlesOffscreen() {
-        unsigned int const count = std::min<unsigned int>(m_uParticleCount, m_uAllocatedParticles);
-        if (m_pQuads == nullptr || count == 0) return false;
-
-        minimum::BoundsAccumulator bounds;
-        for (unsigned int i = 0; i < count; ++i) {
-            auto const& quad = m_pQuads[i];
-            bounds.add(quad.bl.vertices.x, quad.bl.vertices.y);
-            bounds.add(quad.br.vertices.x, quad.br.vertices.y);
-            bounds.add(quad.tl.vertices.x, quad.tl.vertices.y);
-            bounds.add(quad.tr.vertices.x, quad.tr.vertices.y);
-        }
-
-        CCPoint const origin = this->convertToWorldSpace({0.f, 0.f});
-        CCPoint const unitX = this->convertToWorldSpace({1.f, 0.f});
-        CCPoint const unitY = this->convertToWorldSpace({0.f, 1.f});
-        minimum::Affine const toWorld = minimum::affineFromUnitPoints(
-            {origin.x, origin.y}, {unitX.x, unitX.y}, {unitY.x, unitY.y}
-        );
-
-        CCSize const win = CCDirector::get()->getWinSize();
-        minimum::Box const visible{0.f, 0.f, win.width, win.height};
-        float const margin = minimum::particleCullMargin(m_fStartSize, m_fStartSizeVar, m_fEndSize, m_fEndSizeVar);
-        return minimum::shouldCullParticles(true, bounds, toWorld, visible, margin);
+        CCParticleSystemQuad::setTotalParticles(limitedPool(total, createdEarlierThisFrame()));
     }
 
     void draw() {
         auto const& cfg = minimum::config();
-        if (cfg.enabled) {
-            if (cfg.skipIdleParticles && m_uParticleCount == 0) {
-                ++minimum::counters().idleParticleDrawsSkipped;
-                return;
-            }
-            // Draw only. update() still runs for this system, so nothing about it changes.
-            if (cfg.cullOffscreenParticles && m_uParticleCount > 0 && this->particlesOffscreen()) {
-                ++minimum::counters().particleDrawsCulled;
-                return;
-            }
+        if (cfg.enabled && cfg.skipIdleParticles && m_uParticleCount == 0) {
+            ++minimum::counters().idleParticleDrawsSkipped;
+            return;
+        }
+        if (cfg.enabled && cfg.cullOffscreenParticles && m_uParticleCount > 0 && isFarOffScreen(this)) {
+            ++minimum::counters().offscreenParticleDrawsSkipped;
+            return;
         }
         CCParticleSystemQuad::draw();
     }

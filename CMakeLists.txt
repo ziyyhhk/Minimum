@@ -9,6 +9,7 @@ add_library(${PROJECT_NAME} SHARED
   src/main.cpp
   src/config.cpp
   src/frame_gate.cpp
+  src/frame_rate.cpp
   src/particles.cpp
   src/app_delegate.cpp
   src/system_tuning.cpp
@@ -17,8 +18,6 @@ add_library(${PROJECT_NAME} SHARED
   src/latency.cpp
   src/game_quality.cpp
   src/perf_hint.cpp
-  src/thermal.cpp
-  src/mobile_fps.cpp
   src/benchmark.cpp
   src/logo.cpp
   src/logo_data.cpp

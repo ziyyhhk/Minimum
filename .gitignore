@@ -1,5 +1,4 @@
 build/
+build-tests/
 .vscode/
 .idea/
-build-tests/
-__pycache__/

@@ -25,6 +25,9 @@ using namespace geode::prelude;
 //   * looks at every other button in the pause menu and slides to the nearest free spot,
 //   * gets a touch priority that is checked before all the other menus,
 //   * can be moved to another corner (or hidden) in the settings.
+//
+// Hidden: five quick taps on the live FPS card start a 60 second benchmark recording (see
+// benchmark.cpp). The card shows the countdown while it runs.
 
 namespace {
 
@@ -101,15 +104,22 @@ namespace {
 
     // ---- Finding a free spot for the button -------------------------------------------------
 
+    // True when `node` or one of its parents, up to `layer`, is hidden. Such a button is not on
+    // screen, so it must not block a spot.
+    bool hasHiddenAncestor(CCNode* layer, CCNode* node) {
+        for (CCNode* current = node; current && current != layer; current = current->getParent()) {
+            if (!current->isVisible()) return true;
+        }
+        return false;
+    }
+
     // Collects the on-screen rectangle (in `layer` coordinates) of every visible button under
-    // `node`, except the ones below `skip` (our own menu).
-    //
-    // A node with an invisible ancestor is never reported: the walk stops at the first invisible
-    // node, so nothing below it is visited at all (an invisible node hides its whole subtree).
+    // `node`, except the ones below `skip` (our own menu) and the ones with a hidden ancestor.
     void collectBlockers(
         CCNode* layer, CCNode* node, CCNode* skip, float maxSize, std::vector<minimum::Box>& out
     ) {
-        if (!node || node == skip || !node->isVisible()) return;
+        if (!node || node == skip) return;
+        if (hasHiddenAncestor(layer, node)) return;
 
         bool const isButton = typeinfo_cast<CCMenuItem*>(node)
                            || typeinfo_cast<CCMenuItemSpriteExtra*>(node)
@@ -236,6 +246,10 @@ class MinimumPopup : public Popup {
 protected:
     using Clock = std::chrono::steady_clock;
 
+    // How long the game's show animation runs before the fit scale is applied for good.
+    // UNVERIFIED against the game: see the report.
+    static constexpr float kShowAnimationSec = 0.6f;
+
     struct ToggleDef {
         char const* key;
         char const* label;
@@ -255,8 +269,6 @@ protected:
     std::vector<PresetButton> m_presetButtons;
     minimum::PopupPlan m_plan;
     CCSize m_size;
-    // Five quick taps on the logo start / cancel the 60 s benchmark (hidden on purpose).
-    minimum::TapCounter m_logoTaps{5, 3.0};
     int m_stage = 0;
     CCLabelBMFont* m_fpsLabel = nullptr;
     CCLabelBMFont* m_lowLabel = nullptr;
@@ -300,6 +312,10 @@ protected:
         if (ms >= 10.0) log::info("Minimum popup: {} took {:.1f} ms", what, ms);
     }
 
+    static double steadySeconds() {
+        return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
+    }
+
     bool init() {
         auto const started = Clock::now();
 
@@ -319,21 +335,12 @@ protected:
         if (!Popup::init(m_plan.width, m_plan.height, "square01_001.png")) return false;
         this->setTitle("Minimum");
 
-        // On a screen too short even for the tightest layout the whole popup is scaled down.
-        this->applyFit();
+        // Logo, top right, level with the title (the close button lives in the top left).
+        m_mainLayer->addChildAtPosition(makeLogo(28.f), Anchor::TopRight, ccp(-26.f, -22.f));
 
-        // Logo, top right, level with the title (the close button lives in the top left). It is
-        // also the hidden benchmark switch: five quick taps (see onLogo).
-        {
-            constexpr float kLogoHit = 36.f;
-            auto* holder = CCNode::create();
-            holder->setContentSize({kLogoHit, kLogoHit});
-            auto* logo = makeLogo(28.f);
-            logo->setPosition({kLogoHit / 2.f, kLogoHit / 2.f});
-            holder->addChild(logo);
-            auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(MinimumPopup::onLogo));
-            m_buttonMenu->addChildAtPosition(button, Anchor::TopRight, ccp(-26.f, -22.f));
-        }
+        // On a screen shorter than the popup the whole popup is scaled down by the fit scale, so
+        // it fits (see planPopup). The scale is on the popup's own layer, which is centered.
+        this->applyFit(0.f);
 
         this->buildLive();
         this->refreshLive(0.f);
@@ -346,26 +353,10 @@ protected:
         return true;
     }
 
-    // Scales the popup node by the plan's fit scale (1 = nothing to do).
-    //
-    // Geode's open animation (the elastic "pop") may set the main layer's scale itself right after
-    // this popup is created, which would undo a scale set in init(). So the scale is applied
-    // again on the next frame, after show() has run, and any running animation on the node is
-    // dropped first. Only popups that need the shrink (fitScale < 1) are touched at all.
-    void applyFit() {
-        if (m_plan.fitScale >= 1.f) return;
-        m_mainLayer->setScale(m_plan.fitScale);
-        this->scheduleOnce(schedule_selector(MinimumPopup::reapplyFit), 0.f);
-    }
-
-    void reapplyFit(float) {
-        m_mainLayer->stopAllActions();
-        m_mainLayer->setScale(m_plan.fitScale);
-    }
-
-    void onLogo(CCObject*) {
-        double const now = std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
-        if (m_logoTaps.tap(now)) minimum::benchmarkToggle();
+    // Applies the fit scale to the popup layer. Runs once at creation and again after the show
+    // animation (which scales the layer in from nothing), so the fit is what the player sees.
+    void applyFit(float) {
+        if (m_mainLayer) m_mainLayer->setScale(m_plan.fitScale);
     }
 
     void buildStep(float) {
@@ -386,8 +377,10 @@ protected:
     // ---- Live card ---------------------------------------------------------------------------
     void buildLive() {
         auto const c = centerOf(m_plan.live);
+        // The card is a button in disguise: five quick taps on it start the hidden benchmark.
         if (auto* panel = makePanel(m_plan.live.w, m_plan.live.h, kLiveOpacity)) {
-            m_buttonMenu->addChildAtPosition(panel, Anchor::Center, c);
+            auto* card = CCMenuItemSpriteExtra::create(panel, this, menu_selector(MinimumPopup::onLiveTap));
+            m_buttonMenu->addChildAtPosition(card, Anchor::Center, c);
         }
 
         float const left = c.x - m_plan.live.w / 2.f;
@@ -504,10 +497,10 @@ protected:
             m_lastFps = buffer;
             m_fpsLabel->setString(buffer);
         }
-        // 0 means "no measurement yet" (the number shows "--"), which is not the same as a bad
-        // frame rate, so it gets a neutral color instead of the red Bad band.
+        // No reading yet is shown in a neutral color. It is not the Bad (red) band, which would say
+        // the game is slow when nothing has been measured yet.
         if (fps == 0) {
-            m_fpsLabel->setColor(ccc3(200, 200, 200));
+            m_fpsLabel->setColor(ccc3(235, 235, 235));
         }
         else {
             switch (minimum::classifyFps(fps, cfg.targetFps)) {
@@ -525,7 +518,8 @@ protected:
             m_lowLabel->setString(buffer);
         }
 
-        // Second line: frame time, plus whether Low Latency Mode is really running right now.
+        // Second line: frame time, whether Low Latency Mode is really running right now, and what
+        // limits the frame (CPU or GPU). While a benchmark records, its countdown replaces it.
         char const* sync = "";
         if (cfg.enabled && cfg.lowLatency) {
             switch (static_cast<minimum::LatencyState>(counters.latencyState.load(std::memory_order_relaxed))) {
@@ -540,26 +534,23 @@ protected:
         if (minimum::logicRateDiffers(fps, logicRate)) {
             std::snprintf(logic, sizeof(logic), "  |  logic %u", logicRate);
         }
-        // CPU-bound / GPU-bound over the last 60 frames (Android only, empty elsewhere: the
-        // frame hook only fills it where the stored CPU time is really CPU work).
-        char bottleneck[24] = "";
-        {
-            auto const label = minimum::bottleneckLabel(
-                static_cast<minimum::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))
-            );
-            if (!label.empty()) {
-                std::snprintf(bottleneck, sizeof(bottleneck), "  |  %.*s", static_cast<int>(label.size()), label.data());
-            }
-        }
+        char limit[32] = "";
+        char const* limitLabel = minimum::bottleneckLabel(
+            static_cast<minimum::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))
+        );
+        if (*limitLabel) std::snprintf(limit, sizeof(limit), "  |  %s", limitLabel);
+
         double const frameMs = stats.averageFrameMs(60);
+        double const recording = minimum::benchmarkRemainingSec(steadySeconds());
         if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
-        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s%s", frameMs, logic, sync, bottleneck);
-        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s%s", logic, sync, bottleneck);
+        else if (recording > 0.0) std::snprintf(buffer, sizeof(buffer), "benchmark: %.0f s left", std::ceil(recording));
+        else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s%s", frameMs, logic, sync, limit);
+        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s%s", logic, sync, limit);
         if (m_lastFrame != buffer) {
             m_lastFrame = buffer;
             m_frameLabel->setString(buffer);
-            // More text on this line now: keep it inside the live card, next to the FPS number.
-            fitLabel(m_frameLabel, .8f, m_plan.live.w - 120.f);
+            // Keep the line inside the card, to the right of the FPS number.
+            fitLabel(m_frameLabel, .8f, m_plan.live.w - 104.f);
         }
     }
 
@@ -621,6 +612,12 @@ protected:
         openSettingsPopup(Mod::get(), true);
     }
 
+    // Hidden benchmark: each tap on the live card counts; five quick taps start the recording.
+    void onLiveTap(CCObject*) {
+        minimum::noteSecretTap(steadySeconds());
+        this->refreshLive(0.f);
+    }
+
 public:
     static MinimumPopup* create() {
         auto* ret = new MinimumPopup();
@@ -630,6 +627,14 @@ public:
         }
         delete ret;
         return nullptr;
+    }
+
+    // Geode's show animation scales the popup in, so the fit scale is applied again once it has
+    // played.
+    void show() {
+        Popup::show();
+        this->applyFit(0.f);
+        this->scheduleOnce(schedule_selector(MinimumPopup::applyFit), kShowAnimationSec);
     }
 };
 
