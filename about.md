@@ -4,12 +4,10 @@ Makes Geometry Dash run smoother on PC, Mac, Android and iOS.
 
 Open the pause menu and tap the Minimum logo. You get a live FPS card, five presets (up to Super Performance) and the main toggles in one place.
 
-- Skips drawing particle systems that are idle or completely off screen and caps how many particles a level can spawn
+- Skips drawing particle systems that are idle and caps how many particles a level can spawn
 - Live FPS counter with 1% low, so you can see stutter and not just the average
 - Low Latency Mode and Low Detail Mode, on every platform
-- Android 13+: CPU speed hint for steadier frames. Android 11+: backs the particle cap off when the phone gets hot
-- Detailed stats with a proof line, so you can see what Minimum is doing
-- Optional: Unlock FPS on Android and iOS, precise frame limiter on PC and Mac
+- Android 13+: CPU speed hint for steadier frames
 - Windows: background throttle, tab-out volume, fast alt-tab, 1 ms timer, optional Draw Divide
 
 Only changes how the game is drawn. Gameplay, physics and timing are never touched.

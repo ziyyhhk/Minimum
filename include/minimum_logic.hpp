@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <string_view>
 #include <vector>
 
 // Minimum: pure logic, no Geode / cocos types.
@@ -111,55 +110,55 @@ namespace minimum {
     // rate fall, and (this is the important part) it does NOT switch it straight back on:
     // every time it has to back off, it stays off twice as long (10 s, 20 s, 40 s ... max 5 min).
     //
+    // A trip is forgiven one at a time: after kForgiveAfterSec of continuous Active without a
+    // new trip, the trip count goes down by one (never below zero), so the backoff for a player
+    // who had one bad level does not stay at 5 minutes for the rest of the session.
+    //
     // The previous version re-enabled the sync one measurement later. The sync made the FPS
     // drop, the guard turned it off, the FPS recovered, the guard turned it on again, and so on,
     // so the frame rate alternated every half second.
     //
-    // Trip decay: m_trips used to only grow, so one bad minute at the start of a session kept the
-    // backoff at its maximum for the rest of it. Now every kDecaySeconds of Active time without a
-    // trip forgives one trip (never below 0), so the lock after a later trip is shorter again.
-    // Only time spent Active counts, and a trip restarts the clock.
-    //
     // Call update() once per measurement window (about every 0.5 s).
     class LatencyGate {
     public:
-        static constexpr double kDecaySeconds = 120.0;
-        // One window is ~0.5 s. A longer gap (a hitch, the game was away) is not credited in full.
-        static constexpr double kMaxCreditSeconds = 1.0;
+        static constexpr double kForgiveAfterSec = 120.0;
+        static constexpr double kMaxLockSec = 300.0;
 
         // fps    : frames drawn per second in the window that just ended.
         // now    : seconds on any monotonic clock.
         // wanted : the user wants the sync and the game is in a state where it may run.
         bool update(double fps, double now, bool wanted) {
-            // The window that just ended counts as clean Active time when the sync was on
-            // during it. It is credited before this window's verdict, so a trip below wipes it.
-            if (m_hasLast && m_on && now > m_lastNow) {
-                creditActive(std::min(now - m_lastNow, kMaxCreditSeconds));
-            }
-            m_lastNow = now;
-            m_hasLast = true;
-
             // Recent best frame rate, decays about 3 % per window so it follows the level.
             m_peak = std::max(fps, m_peak * 0.97);
+            double const dt = m_hasLast ? std::max(0.0, now - m_lastNow) : 0.0;
+            m_hasLast = true;
+            m_lastNow = now;
 
             if (!wanted || now < m_lockedUntil) {
                 m_on = false;
+                m_activeFor = 0.0;
                 return false;
             }
 
             if (m_on) {
+                m_activeFor += dt;
+                if (m_activeFor >= kForgiveAfterSec) {
+                    if (m_trips > 0) --m_trips;
+                    m_activeFor = 0.0;
+                }
                 // The sync is running and the frame rate fell clearly below the recent best.
                 if (fps < 30.0 || fps < 0.85 * m_peak) {
                     m_on = false;
                     ++m_trips;
-                    m_cleanSeconds = 0.0;
-                    double const lock = std::min(300.0, 10.0 * std::pow(2.0, std::min(m_trips, 16) - 1));
+                    m_activeFor = 0.0;
+                    double const lock = std::min(kMaxLockSec, 10.0 * std::pow(2.0, m_trips - 1));
                     m_lockedUntil = now + lock;
                 }
             }
             else if (fps >= 30.0 && fps >= 0.97 * m_peak) {
                 // Only start while the game is holding a steady frame rate.
                 m_on = true;
+                m_activeFor = 0.0;
             }
             return m_on;
         }
@@ -168,23 +167,10 @@ namespace minimum {
         int trips() const { return m_trips; }
 
     private:
-        void creditActive(double seconds) {
-            if (m_trips <= 0) {
-                m_cleanSeconds = 0.0;
-                return;
-            }
-            m_cleanSeconds += seconds;
-            while (m_trips > 0 && m_cleanSeconds >= kDecaySeconds) {
-                --m_trips;
-                m_cleanSeconds -= kDecaySeconds;
-            }
-            if (m_trips == 0) m_cleanSeconds = 0.0;
-        }
-
         double m_peak = 0.0;
         double m_lockedUntil = 0.0;
         double m_lastNow = 0.0;
-        double m_cleanSeconds = 0.0;
+        double m_activeFor = 0.0;
         int m_trips = 0;
         bool m_on = false;
         bool m_hasLast = false;
@@ -222,22 +208,6 @@ namespace minimum {
         // Average over the newest n samples (n is clamped to what is available).
         double averageFrameMs(size_t n) const { return average(m_frame, n); }
         double averageCpuMs(size_t n) const { return average(m_cpu, n); }
-
-        // Share of the frame time the CPU was busy, over the newest n samples: sum(cpu) divided by
-        // sum(frame), clamped to 0..1. Returns -1 when there are no samples (or no frame time).
-        double cpuShare(size_t n) const {
-            n = std::min(n, m_size);
-            if (n == 0) return -1.0;
-            double frame = 0.0;
-            double cpu = 0.0;
-            for (size_t i = 0; i < n; ++i) {
-                size_t const at = slot(m_size - n + i);
-                frame += m_frame[at];
-                cpu += m_cpu[at];
-            }
-            if (frame <= 0.0) return -1.0;
-            return std::clamp(cpu / frame, 0.0, 1.0);
-        }
 
         // "1% low": the frame rate of the slowest 1% of the newest n frames. It is the number
         // that tells you about stutter, which an average FPS hides.
@@ -285,18 +255,6 @@ namespace minimum {
         return FpsBand::Bad;
     }
 
-    // The stats line must stay on screen. `requested` is the HUD Scale setting, content* is the
-    // label's size at scale 1 and room* is the space available (screen minus margins). The scale is
-    // lowered just enough to fit both ways, never raised, and never below 0.1 (or `requested`, if that
-    // is smaller). The Detailed line is three lines of ~100 characters, which at a high HUD Scale
-    // is wider than a phone screen.
-    inline float hudFitScale(float requested, float contentW, float contentH, float roomW, float roomH) {
-        float scale = requested;
-        if (contentW > 0.f && roomW > 0.f && contentW * scale > roomW) scale = roomW / contentW;
-        if (contentH > 0.f && roomH > 0.f && contentH * scale > roomH) scale = std::min(scale, roomH / contentH);
-        return std::clamp(scale, std::min(requested, 0.1f), requested);
-    }
-
     // The game can run its logic (scheduler updates) at a different rate than it draws frames,
     // for example 240 updates per second with 60 frames drawn. Other FPS counters often show
     // the update rate, so when the two are clearly apart the counter shows both.
@@ -305,6 +263,322 @@ namespace minimum {
         double const tolerance = std::max(4.0, drawFps * 0.10);
         return std::fabs(logicRate - drawFps) > tolerance;
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Bottleneck readout
+    // ---------------------------------------------------------------------------------------
+
+    // Which side limits the frame: the CPU (the game code and the driver spend the frame busy)
+    // or the GPU (the CPU is mostly waiting, which only shows while Low Latency Mode syncs).
+    enum class Bottleneck { None, CpuBound, GpuBound };
+
+    constexpr size_t kBottleneckWindow = 60;
+    constexpr double kCpuBoundShare = 0.85;
+    constexpr double kGpuBoundShare = 0.5;
+
+    // avgCpuMs / avgFrameMs are the means over the newest kBottleneckWindow drawn frames.
+    // `samples` is how many drawn frames exist, `syncActive` is Low Latency Mode running right now.
+    // Nothing is classified until a full window exists.
+    inline Bottleneck classifyBottleneck(double avgCpuMs, double avgFrameMs, size_t samples, bool syncActive) {
+        if (samples < kBottleneckWindow || avgFrameMs <= 0.0) return Bottleneck::None;
+        double const share = avgCpuMs / avgFrameMs;
+        if (share >= kCpuBoundShare) return Bottleneck::CpuBound;
+        if (share < kGpuBoundShare && syncActive) return Bottleneck::GpuBound;
+        return Bottleneck::None;
+    }
+
+    inline char const* bottleneckLabel(Bottleneck b) {
+        switch (b) {
+            case Bottleneck::CpuBound: return "CPU-bound";
+            case Bottleneck::GpuBound: return "GPU-bound";
+            default: return "";
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Particle cap steps
+    // ---------------------------------------------------------------------------------------
+
+    // Steps the particle cap down (cap, cap/2, cap/4, cap/8) while the game keeps missing the
+    // target frame rate, and back up once it is smooth again. Fed once per second with the
+    // number of drawn frames in that second and how many of them were slow.
+    class AdaptiveCapGovernor {
+    public:
+        static constexpr int kMaxStep = 3;
+
+        void noteWindow(uint32_t frames, uint32_t slowFrames) {
+            if (frames < 10) return;
+            double const slowRatio = static_cast<double>(slowFrames) / static_cast<double>(frames);
+            if (slowRatio > 0.25) {
+                m_goodWindows = 0;
+                // Two bad seconds in a row before lowering, so one hitch does not change anything.
+                if (++m_badWindows >= 2) {
+                    m_badWindows = 0;
+                    if (m_step < kMaxStep) ++m_step;
+                }
+            }
+            else if (slowRatio < 0.02) {
+                m_badWindows = 0;
+                // Ten smooth seconds before raising the cap again.
+                if (++m_goodWindows >= 10) {
+                    m_goodWindows = 0;
+                    if (m_step > 0) --m_step;
+                }
+            }
+            else {
+                m_badWindows = 0;
+            }
+        }
+
+        void reset() { *this = AdaptiveCapGovernor{}; }
+        int step() const { return m_step; }
+
+    private:
+        int m_step = 0;
+        int m_badWindows = 0;
+        int m_goodWindows = 0;
+    };
+
+    // A drawn frame counts as slow when it took longer than 1.5 times the target frame time.
+    // `frameSec` is the time between two frames of the game loop (not only the drawn ones).
+    inline bool isSlowFrame(double frameSec, double targetFps) {
+        if (targetFps <= 0.0) targetFps = 60.0;
+        return frameSec * 1000.0 > 1500.0 / targetFps;
+    }
+
+    // Per second rate of a counter that grew by `delta` over `spanSec` seconds. 0 for an empty span.
+    inline uint64_t perSecond(uint64_t delta, double spanSec) {
+        if (spanSec <= 0.0) return 0;
+        return static_cast<uint64_t>(static_cast<double>(delta) / spanSec + 0.5);
+    }
+
+    // Thermal steps. The values are AThermalStatus from the NDK (NONE 0, LIGHT 1, MODERATE 2,
+    // SEVERE 3, CRITICAL 4, EMERGENCY 5, SHUTDOWN 6; ERROR -1).
+    //
+    // While the status is SEVERE or worse the cap drops one step at once, then one more step at
+    // most every kStepEverySec. After kRecoverAfterSec of nominal status (NONE or LIGHT) it comes
+    // back one step, and again after each further kRecoverAfterSec. MODERATE and ERROR hold the
+    // current step and restart the nominal timer.
+    class ThermalGovernor {
+    public:
+        static constexpr int kMaxStep = 3;
+        static constexpr int kSevere = 3;
+        static constexpr double kStepEverySec = 5.0;
+        static constexpr double kRecoverAfterSec = 30.0;
+
+        int update(int status, double now) {
+            if (status >= kSevere) {
+                m_nominalSince = -1.0;
+                bool const due = m_lastStepAt < 0.0 || now - m_lastStepAt >= kStepEverySec;
+                if (due && m_step < kMaxStep) {
+                    ++m_step;
+                    m_lastStepAt = now;
+                }
+            }
+            else if (status == 0 || status == 1) {
+                if (m_nominalSince < 0.0) m_nominalSince = now;
+                if (m_step > 0 && now - m_nominalSince >= kRecoverAfterSec) {
+                    --m_step;
+                    m_nominalSince = now;
+                }
+            }
+            else {
+                m_nominalSince = -1.0;
+            }
+            return m_step;
+        }
+
+        void reset() { *this = ThermalGovernor{}; }
+        int step() const { return m_step; }
+
+    private:
+        int m_step = 0;
+        double m_lastStepAt = -1.0;
+        double m_nominalSince = -1.0;
+    };
+
+    // The adaptive and the thermal governor lower the same cap, so their steps add up and the
+    // total is capped at the deepest step.
+    inline int combinedCapStep(int adaptiveStep, int thermalStep) {
+        return std::clamp(std::max(0, adaptiveStep) + std::max(0, thermalStep), 0, AdaptiveCapGovernor::kMaxStep);
+    }
+
+    // The configured pool size lowered by `step` halvings. Never below 16, never above `configured`.
+    inline unsigned int cappedPoolSize(unsigned int configured, int step) {
+        if (step <= 0) return configured;
+        unsigned int const lowered = std::max(configured >> std::min(step, 8), 16u);
+        return std::min(configured, lowered);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Spawn budget
+    // ---------------------------------------------------------------------------------------
+
+    // Particle systems past the per-frame budget still get created (the game expects them to
+    // exist), they just get this small pool instead of a full one.
+    constexpr unsigned int kOverBudgetPool = 4;
+
+    // `createdEarlier` is how many particle systems were already created in this frame.
+    inline unsigned int budgetedPoolSize(unsigned int requested, uint64_t createdEarlier, unsigned int budget) {
+        if (budget == 0 || createdEarlier < budget) return requested;
+        return std::min(requested, kOverBudgetPool);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Off-screen particle culling
+    // ---------------------------------------------------------------------------------------
+
+    // Extra room around a system, on top of its particle size, so nothing is cut at the edge.
+    constexpr float kCullMarginPt = 48.f;
+
+    // Upper bounds for one particle system, all in its own (local) units. Every value is a bound,
+    // not an average: speed and life include their variance, acceleration is the sum of the
+    // magnitudes of gravity, radial and tangential acceleration (variances included), radius is the
+    // largest orbit of radius mode, and the sizes are the larger of start and end size.
+    struct ParticleBounds {
+        float speed = 0.f;         // speed + |speed variance|
+        float life = 0.f;          // life + |life variance|
+        float accel = 0.f;         // |gravity| + radial + tangential, each with its variance
+        float radius = 0.f;        // largest orbit radius (radius mode), variance included
+        float posVar = 0.f;        // length of the position variance
+        float sourceLength = 0.f;  // length of the emitter offset
+        float maxSize = 0.f;       // larger of start and end size, variance included
+    };
+
+    // How far a particle can get from its emitter, in local units. For constant acceleration
+    // |x(t)| <= v * t + a * t * t / 2, and both speed and acceleration are taken at their bounds,
+    // so this holds for every particle. Radius mode moves particles on a circle of radius at most
+    // `radius`. Both are computed and the larger one is used, so a system that uses both modes is
+    // still covered. The margin covers the discrete integration steps and texture edges.
+    inline float particleReach(ParticleBounds const& b) {
+        float const life = std::max(0.f, b.life);
+        float const travel = std::max(0.f, b.speed) * life + 0.5f * std::max(0.f, b.accel) * life * life;
+        float const orbit = std::max(0.f, b.radius);
+        return std::max(0.f, b.sourceLength) + std::max(0.f, b.posVar)
+             + std::max(travel, orbit) + std::max(0.f, b.maxSize) + kCullMarginPt;
+    }
+
+    // True when the square of half-size `reach` around `center` touches `area` (edges included,
+    // so a particle exactly on the border is never culled).
+    inline bool squareTouches(Vec2 center, float reach, Box const& area) {
+        return center.x + reach >= area.x && center.x - reach <= area.right()
+            && center.y + reach >= area.y && center.y - reach <= area.top();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Frame rate limits
+    // ---------------------------------------------------------------------------------------
+
+    // The animation interval (seconds per frame) the game should ask the OS for. With the unlock
+    // on, a request slower than the limit is shortened to the limit. A faster request is kept.
+    inline double unlockedAnimationInterval(double requested, bool unlock, int limitFps) {
+        if (!unlock || requested <= 0.0) return requested;
+        int const fps = std::clamp(limitFps, 30, 240);
+        double const fastest = 1.0 / static_cast<double>(fps);
+        return requested > fastest ? fastest : requested;
+    }
+
+    // Seconds still to wait before the next frame may start, 0 when it is already late.
+    inline double frameWaitSeconds(double elapsedSec, double periodSec) {
+        double const left = periodSec - elapsedSec;
+        return left > 0.0 ? left : 0.0;
+    }
+
+    struct WaitSplit {
+        double sleepSec = 0.0;
+        double spinSec = 0.0;
+    };
+
+    // Splits a wait into a sleep and a busy wait. The last `spinSec` are spun, because a sleep
+    // is only as exact as the OS timer.
+    inline WaitSplit splitWait(double waitSec, double spinSec) {
+        if (waitSec <= 0.0) return {};
+        if (waitSec <= spinSec) return {0.0, waitSec};
+        return {waitSec - spinSec, spinSec};
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Hidden shortcut and benchmark recording
+    // ---------------------------------------------------------------------------------------
+
+    // Counts taps that come quickly after each other. `tap` returns true on the tap that
+    // completes a streak of `needed` taps, each one within `windowSec` of the streak's first tap.
+    class TapStreak {
+    public:
+        TapStreak(int needed, double windowSec) : m_needed(needed), m_window(windowSec) {}
+
+        bool tap(double now) {
+            if (m_count == 0 || now - m_first > m_window) {
+                m_first = now;
+                m_count = 0;
+            }
+            ++m_count;
+            if (m_count >= m_needed) {
+                m_count = 0;
+                return true;
+            }
+            return false;
+        }
+
+    private:
+        int m_needed;
+        double m_window;
+        double m_first = 0.0;
+        int m_count = 0;
+    };
+
+    // Records frame times for a fixed time and writes them out as CSV text.
+    class FrameRecorder {
+    public:
+        struct Sample {
+            double elapsedSec;
+            double frameMs;
+            double cpuMs;
+        };
+
+        void start(double now, double durationSec) {
+            m_samples.clear();
+            m_samples.reserve(static_cast<size_t>(durationSec * 240.0));
+            m_start = now;
+            m_duration = durationSec;
+            m_active = true;
+        }
+
+        // Returns true on the sample that ends the recording.
+        bool add(double now, double frameMs, double cpuMs) {
+            if (!m_active) return false;
+            m_samples.push_back({now - m_start, frameMs, cpuMs});
+            if (now - m_start >= m_duration) {
+                m_active = false;
+                return true;
+            }
+            return false;
+        }
+
+        void stop() { m_active = false; }
+        bool active() const { return m_active; }
+        size_t size() const { return m_samples.size(); }
+
+        double remainingSec(double now) const {
+            return m_active ? std::max(0.0, m_duration - (now - m_start)) : 0.0;
+        }
+
+        std::string csv() const {
+            std::string out = "elapsed_s,frame_ms,cpu_ms\n";
+            char line[96];
+            for (auto const& s : m_samples) {
+                std::snprintf(line, sizeof(line), "%.4f,%.3f,%.3f\n", s.elapsedSec, s.frameMs, s.cpuMs);
+                out += line;
+            }
+            return out;
+        }
+
+    private:
+        std::vector<Sample> m_samples;
+        double m_start = 0.0;
+        double m_duration = 0.0;
+        bool m_active = false;
+    };
 
     // ---------------------------------------------------------------------------------------
     // Presets
@@ -335,10 +609,12 @@ namespace minimum {
     // Where everything in the Minimum popup goes. All boxes are in popup coordinates, the
     // origin is the lower left corner of the popup. Built bottom-up, so the popup is exactly as
     // tall as its content. Three spacing levels (0 roomy, 1 compact, 2 tight): the roomiest one
-    // that fits the screen is used.
+    // that fits the screen is used. If even the tightest one is taller than the screen, the
+    // whole popup is scaled by `fitScale` so it still fits.
     struct PopupPlan {
         float width = 0.f;
-        float height = 0.f;
+        float height = 0.f;        // unscaled
+        float fitScale = 1.f;      // min(1, maxHeight / height)
         int level = 0;
         bool compact = false;      // level >= 1
         Box live;
@@ -346,9 +622,6 @@ namespace minimum {
         std::vector<Box> toggles;
         Box settingsButton;
         Box credits;               // two lines of text
-        // min(1, maxHeight / height). 1 when the plan fits, less when even the tightest spacing
-        // level is too tall: the popup node is scaled by this so it always fits the screen.
-        float fitScale = 1.f;
     };
 
     inline PopupPlan planPopup(float maxHeight, size_t toggleCount, size_t presetCount = 5) {
@@ -417,462 +690,18 @@ namespace minimum {
             return p;
         };
 
-        for (int level = 0; level < 2; ++level) {
-            PopupPlan plan = build(level);
-            if (plan.height <= maxHeight) return plan;
-        }
-        // Even the tightest level does not fit: keep it and shrink the whole popup instead of
-        // letting it run off the screen. The lower bound only guards against a nonsense maxHeight.
         PopupPlan plan = build(2);
-        if (plan.height > 0.f) plan.fitScale = std::clamp(maxHeight / plan.height, 0.1f, 1.f);
+        for (int level = 0; level < 2; ++level) {
+            PopupPlan candidate = build(level);
+            if (candidate.height <= maxHeight) {
+                plan = candidate;
+                break;
+            }
+        }
+        if (plan.height > 0.f) {
+            plan.fitScale = std::clamp(maxHeight / plan.height, 0.05f, 1.f);
+        }
         return plan;
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Adaptive particle cap
-    // ---------------------------------------------------------------------------------------
-
-    constexpr int kMaxCapStep = 3;
-    constexpr unsigned int kMinParticleCap = 16;
-
-    // The cap for a step: step 0 is the configured cap, every further step halves it, never
-    // below kMinParticleCap and never above the configured cap.
-    inline unsigned int capForStep(unsigned int base, int step) {
-        if (step <= 0) return base;
-        unsigned int const lowered = std::max(base >> std::min(step, 31), kMinParticleCap);
-        return std::min(base, lowered);
-    }
-
-    // Steps that come from different sources (the adaptive cap and the thermal guard) add up,
-    // the total never goes past kMaxCapStep.
-    inline int combinedCapStep(int adaptiveStep, int thermalSteps) {
-        return std::clamp(adaptiveStep + thermalSteps, 0, kMaxCapStep);
-    }
-
-    // A drawn frame is "slow" when it took more than 1.5x the time it should have. That is the
-    // target frame time, or, when the frame gate deliberately draws less often than the target
-    // (Draw Divide), the gate's own interval. Without the second part every frame of a 30 FPS
-    // Draw Divide would count as slow against a 60 FPS target.
-    inline double slowFrameThresholdMs(double targetFps, double gateIntervalSeconds) {
-        if (!(targetFps > 0.0)) targetFps = 60.0;
-        double const expectedMs = std::max(1000.0 / targetFps, gateIntervalSeconds * 1000.0);
-        return 1.5 * expectedMs;
-    }
-
-    inline bool isSlowFrame(double frameMs, double targetFps, double gateIntervalSeconds) {
-        return frameMs > slowFrameThresholdMs(targetFps, gateIntervalSeconds);
-    }
-
-    // Lowers the cap when the game keeps missing the target and raises it again after it has
-    // been smooth for a while. Feed update() once per second with the number of DRAWN frames in
-    // that second and how many of them were slow. Logic-only frames must not be counted: they
-    // are cheap by design and would dilute the slow ratio.
-    class AdaptiveCap {
-    public:
-        static constexpr uint32_t kMinFrames = 10;
-        static constexpr double kSlowRatio = 0.25;     // above this the second is "bad"
-        static constexpr double kSmoothRatio = 0.02;   // below this the second is "smooth"
-        static constexpr int kBadSecondsToLower = 2;   // one hitch changes nothing
-        static constexpr int kSmoothSecondsToRaise = 10;
-
-        void reset() {
-            m_step = 0;
-            m_bad = 0;
-            m_good = 0;
-        }
-
-        void update(uint32_t drawnFrames, uint32_t slowFrames) {
-            if (drawnFrames < kMinFrames) return;
-            double const ratio = static_cast<double>(slowFrames) / static_cast<double>(drawnFrames);
-            if (ratio > kSlowRatio) {
-                m_good = 0;
-                if (++m_bad >= kBadSecondsToLower) {
-                    m_bad = 0;
-                    if (m_step < kMaxCapStep) ++m_step;
-                }
-            }
-            else if (ratio < kSmoothRatio) {
-                m_bad = 0;
-                if (++m_good >= kSmoothSecondsToRaise) {
-                    m_good = 0;
-                    if (m_step > 0) --m_step;
-                }
-            }
-            else {
-                m_bad = 0;
-            }
-        }
-
-        int step() const { return m_step; }
-
-    private:
-        int m_step = 0;
-        int m_bad = 0;
-        int m_good = 0;
-    };
-
-    // ---------------------------------------------------------------------------------------
-    // Thermal response
-    // ---------------------------------------------------------------------------------------
-
-    // Values of the Android thermal status (AThermalStatus). Kept as plain numbers here so this
-    // header needs no NDK: 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency,
-    // 6 shutdown, -1 error / unknown.
-    constexpr int kThermalSevere = 3;
-    constexpr int kThermalNominalMax = 1;   // "nominal" = none or light
-
-    // Lowers the particle cap by one step while the device is severely hot, and gives it back
-    // after it has been nominal for kRecoverSeconds in a row. Moderate heat changes nothing and
-    // does not start the recovery clock; an unknown status (-1) is ignored.
-    class ThermalGuard {
-    public:
-        static constexpr double kRecoverSeconds = 30.0;
-
-        void update(int status, double now) {
-            if (status < 0) return;
-            if (status >= kThermalSevere) {
-                m_throttling = true;
-                m_nominal = false;
-                return;
-            }
-            if (!m_throttling) return;
-            if (status <= kThermalNominalMax) {
-                if (!m_nominal) {
-                    m_nominal = true;
-                    m_nominalSince = now;
-                }
-                else if (now - m_nominalSince >= kRecoverSeconds) {
-                    m_throttling = false;
-                    m_nominal = false;
-                }
-            }
-            else {
-                m_nominal = false;
-            }
-        }
-
-        void reset() {
-            m_throttling = false;
-            m_nominal = false;
-        }
-
-        bool throttling() const { return m_throttling; }
-        // How many cap steps to take off (see combinedCapStep).
-        int steps() const { return m_throttling ? 1 : 0; }
-
-    private:
-        bool m_throttling = false;
-        bool m_nominal = false;
-        double m_nominalSince = 0.0;
-    };
-
-    // ---------------------------------------------------------------------------------------
-    // Bottleneck readout
-    // ---------------------------------------------------------------------------------------
-
-    enum class Bottleneck : uint8_t { None = 0, Cpu = 1, Gpu = 2 };
-
-    constexpr size_t kBottleneckWindow = 60;       // frames
-    constexpr size_t kBottleneckMinFrames = 30;    // fewer than this is not enough to say anything
-    constexpr double kCpuBoundShare = 0.85;
-    constexpr double kGpuBoundShare = 0.5;
-
-    // cpuShare is FrameStats::cpuShare (< 0 means "no data"). GPU-bound is only claimed while the
-    // Low Latency sync is Active: only then does the sync make the GPU wait show up as time the
-    // CPU is NOT busy. Without it a low share could just as well be vsync or a frame cap.
-    inline Bottleneck classifyBottleneck(double cpuShare, bool latencySyncActive) {
-        if (cpuShare < 0.0) return Bottleneck::None;
-        if (cpuShare >= kCpuBoundShare) return Bottleneck::Cpu;
-        if (cpuShare < kGpuBoundShare && latencySyncActive) return Bottleneck::Gpu;
-        return Bottleneck::None;
-    }
-
-    inline Bottleneck bottleneckFor(FrameStats const& stats, bool latencySyncActive) {
-        if (stats.size() < kBottleneckMinFrames) return Bottleneck::None;
-        return classifyBottleneck(stats.cpuShare(kBottleneckWindow), latencySyncActive);
-    }
-
-    inline std::string_view bottleneckLabel(Bottleneck b) {
-        switch (b) {
-            case Bottleneck::Cpu: return "CPU-bound";
-            case Bottleneck::Gpu: return "GPU-bound";
-            default: return "";
-        }
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Off-screen particle culling
-    // ---------------------------------------------------------------------------------------
-
-    // 2D affine transform, the same layout the game's node transforms use:
-    // x' = a*x + c*y + tx, y' = b*x + d*y + ty.
-    struct Affine {
-        float a = 1.f;
-        float b = 0.f;
-        float c = 0.f;
-        float d = 1.f;
-        float tx = 0.f;
-        float ty = 0.f;
-    };
-
-    inline Vec2 applyAffine(Affine const& t, Vec2 p) {
-        return {t.a * p.x + t.c * p.y + t.tx, t.b * p.x + t.d * p.y + t.ty};
-    }
-
-    // The transform that moves (0,0) to `origin`, (1,0) to `unitX` and (0,1) to `unitY`. Lets
-    // the game side read a node's local-to-world transform with three point conversions.
-    inline Affine affineFromUnitPoints(Vec2 origin, Vec2 unitX, Vec2 unitY) {
-        return {unitX.x - origin.x, unitX.y - origin.y, unitY.x - origin.x, unitY.y - origin.y, origin.x, origin.y};
-    }
-
-    // Axis aligned box around the four transformed corners of `local`.
-    inline Box transformBox(Box const& local, Affine const& t) {
-        Vec2 const corners[4] = {
-            applyAffine(t, {local.x, local.y}),
-            applyAffine(t, {local.right(), local.y}),
-            applyAffine(t, {local.x, local.top()}),
-            applyAffine(t, {local.right(), local.top()}),
-        };
-        float minX = corners[0].x, maxX = corners[0].x, minY = corners[0].y, maxY = corners[0].y;
-        for (auto const& c : corners) {
-            minX = std::min(minX, c.x);
-            maxX = std::max(maxX, c.x);
-            minY = std::min(minY, c.y);
-            maxY = std::max(maxY, c.y);
-        }
-        return {minX, minY, maxX - minX, maxY - minY};
-    }
-
-    // Collects the bounds of a set of points. Anything that is not a finite number is ignored,
-    // so a corrupt vertex can never produce a box that wrongly claims "off screen".
-    class BoundsAccumulator {
-    public:
-        void add(float x, float y) {
-            if (!std::isfinite(x) || !std::isfinite(y)) {
-                m_bad = true;
-                return;
-            }
-            if (!m_any) {
-                m_minX = m_maxX = x;
-                m_minY = m_maxY = y;
-                m_any = true;
-                return;
-            }
-            m_minX = std::min(m_minX, x);
-            m_maxX = std::max(m_maxX, x);
-            m_minY = std::min(m_minY, y);
-            m_maxY = std::max(m_maxY, y);
-        }
-
-        // False when nothing was added, or when any added value was not a finite number.
-        bool valid() const { return m_any && !m_bad; }
-
-        Box box() const { return {m_minX, m_minY, m_maxX - m_minX, m_maxY - m_minY}; }
-
-    private:
-        float m_minX = 0.f, m_maxX = 0.f, m_minY = 0.f, m_maxY = 0.f;
-        bool m_any = false;
-        bool m_bad = false;
-    };
-
-    // Safety margin on top of the measured bounds (world units): covers a camera that moves
-    // between the particle update and the draw, and rounding in the transform.
-    constexpr float kCullExtraMargin = 32.f;
-
-    // boxesCollide() is strict, so a box that sits exactly at the margin would count as "does not
-    // overlap". Culling is only allowed for boxes clearly beyond the margin; a borderline case is drawn.
-    constexpr float kCullEpsilon = 0.01f;
-
-    // Margin that makes sure the biggest particle the system can have is never clipped: its
-    // largest size plus kCullExtraMargin.
-    inline float particleCullMargin(float startSize, float startSizeVar, float endSize, float endSizeVar) {
-        auto const sane = [](float v) { return std::isfinite(v) ? std::fabs(v) : 0.f; };
-        float const biggest = std::max(sane(startSize) + sane(startSizeVar), sane(endSize) + sane(endSizeVar));
-        return biggest + kCullExtraMargin;
-    }
-
-    // True when the system's draw can be skipped: culling is on, the bounds are trustworthy and
-    // their world-space box stays clear of `visible` by more than `margin`.
-    inline bool shouldCullParticles(
-        bool enabled, BoundsAccumulator const& localBounds, Affine const& localToWorld,
-        Box const& visible, float margin
-    ) {
-        if (!enabled || !localBounds.valid()) return false;
-        Box const world = transformBox(localBounds.box(), localToWorld);
-        if (!std::isfinite(world.x) || !std::isfinite(world.y) || !std::isfinite(world.w) || !std::isfinite(world.h)) {
-            return false;
-        }
-        return !boxesCollide(world, visible, margin + kCullEpsilon);
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Spawn budget
-    // ---------------------------------------------------------------------------------------
-
-    // Pool size of a particle system that is created after the per-frame budget is used up. It
-    // is still created (never a failed create, the game does not expect one), it just has next
-    // to no particles.
-    constexpr unsigned int kOverBudgetPoolSize = 4;
-
-    // The budget is for gameplay, not for loading. A level creates hundreds of systems in one
-    // frame while it loads, and giving those a tiny pool would ruin the level's own effects for
-    // good. So the budget only starts once the player has been in the level for this many
-    // frames in a row (counted at the start of each frame, so the loading frame itself never
-    // counts).
-    constexpr uint32_t kSpawnBudgetGraceFrames = 60;
-
-    inline bool spawnBudgetActive(uint32_t framesInLevel) {
-        return framesInLevel >= kSpawnBudgetGraceFrames;
-    }
-
-    // budget <= 0 means off. `spentThisFrame` is how many systems were already created in this
-    // frame before the one being created now.
-    inline unsigned int spawnBudgetTotal(unsigned int requested, uint64_t spentThisFrame, int budget) {
-        if (budget <= 0) return requested;
-        if (spentThisFrame < static_cast<uint64_t>(budget)) return requested;
-        return std::min(requested, kOverBudgetPoolSize);
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Frame rate unlock (Android / iOS)
-    // ---------------------------------------------------------------------------------------
-
-    constexpr int kFpsLimitMin = 30;
-    constexpr int kFpsLimitMax = 240;
-
-    // The animation interval (seconds) to hand to the system. The game's own request goes
-    // through unchanged when the unlock is off, and when it already asks for at least as many
-    // frames as the limit. Requests of 0 or less mean "no interval" and are never touched.
-    inline double unlockedInterval(double requested, bool enabled, int limit) {
-        if (!enabled || !(requested > 0.0)) return requested;
-        int const fps = std::clamp(limit, kFpsLimitMin, kFpsLimitMax);
-        return std::min(requested, 1.0 / static_cast<double>(fps));
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Precise frame limiter (Windows / macOS)
-    // ---------------------------------------------------------------------------------------
-
-    // The limiter only runs when the game's own cap is not already holding the frame rate at the
-    // target: the game's animation interval is clearly shorter than the target's (or 0 = no cap).
-    // Two limiters on top of each other make frame times jitter.
-    inline bool shouldPreciseLimit(bool enabled, double targetFps, double gameIntervalSeconds) {
-        if (!enabled || !(targetFps > 0.0) || std::isnan(gameIntervalSeconds)) return false;
-        return gameIntervalSeconds < 0.9 / targetFps;
-    }
-
-    // The deadline for the end of this frame. Normally one interval after the previous
-    // deadline, which keeps the pace exact over time. When the frame ran late the deadline is
-    // "now": the frame that was lost is not made up with a burst of fast ones.
-    inline double nextDeadline(double previousDeadline, double now, double interval) {
-        return std::max(previousDeadline + interval, now);
-    }
-
-    struct WaitPlan {
-        double sleepSeconds = 0.0;   // hand the thread to the OS for this long ...
-        double spinSeconds = 0.0;    // ... then busy-wait this long, the OS wake-up is not exact
-    };
-
-    inline WaitPlan planWait(double now, double deadline, double spinWindow) {
-        double const remaining = deadline - now;
-        if (!(remaining > 0.0)) return {};
-        double const spin = std::min(std::max(spinWindow, 0.0), remaining);
-        return {remaining - spin, spin};
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Counters per second
-    // ---------------------------------------------------------------------------------------
-
-    inline uint32_t ratePerSecond(uint64_t delta, double spanSeconds) {
-        if (!(spanSeconds > 0.0)) return 0;
-        double const rate = static_cast<double>(delta) / spanSeconds;
-        return rate >= 4.0e9 ? 4000000000u : static_cast<uint32_t>(rate + 0.5);
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // Benchmark mode
-    // ---------------------------------------------------------------------------------------
-
-    // Records the frame time of every drawn frame for kDurationSeconds, then reports "finished".
-    class BenchmarkRecorder {
-    public:
-        static constexpr double kDurationSeconds = 60.0;
-
-        void start(double now) {
-            m_active = true;
-            m_start = now;
-            m_time.clear();
-            m_frameMs.clear();
-        }
-
-        void cancel() { m_active = false; }
-
-        bool active() const { return m_active; }
-        double elapsed(double now) const { return m_active ? std::max(0.0, now - m_start) : 0.0; }
-        size_t samples() const { return m_frameMs.size(); }
-
-        // Returns true exactly once: on the call that ends the run.
-        bool push(double now, double frameMs) {
-            if (!m_active) return false;
-            if (now - m_start >= kDurationSeconds) {
-                m_active = false;
-                return true;
-            }
-            m_time.push_back(now - m_start);
-            m_frameMs.push_back(frameMs);
-            return false;
-        }
-
-        double averageFrameMs() const {
-            if (m_frameMs.empty()) return 0.0;
-            double sum = 0.0;
-            for (double v : m_frameMs) sum += v;
-            return sum / static_cast<double>(m_frameMs.size());
-        }
-
-        std::string toCsv() const {
-            std::string out = "frame,time_s,frame_ms\n";
-            out.reserve(out.size() + m_frameMs.size() * 24);
-            char line[64];
-            for (size_t i = 0; i < m_frameMs.size(); ++i) {
-                int const n = std::snprintf(line, sizeof(line), "%zu,%.4f,%.4f\n", i, m_time[i], m_frameMs[i]);
-                if (n > 0) out.append(line, static_cast<size_t>(std::min<int>(n, static_cast<int>(sizeof(line)) - 1)));
-            }
-            return out;
-        }
-
-    private:
-        std::vector<double> m_time;
-        std::vector<double> m_frameMs;
-        double m_start = 0.0;
-        bool m_active = false;
-    };
-
-    // N taps within a time window. Used for the hidden benchmark switch (tap the popup logo).
-    class TapCounter {
-    public:
-        explicit TapCounter(size_t taps = 5, double windowSeconds = 3.0)
-            : m_taps(taps), m_window(windowSeconds) {}
-
-        // Returns true on the tap that completes the sequence, and starts over.
-        bool tap(double now) {
-            m_times.erase(
-                std::remove_if(m_times.begin(), m_times.end(), [&](double t) { return now - t > m_window; }),
-                m_times.end()
-            );
-            m_times.push_back(now);
-            if (m_times.size() >= m_taps) {
-                m_times.clear();
-                return true;
-            }
-            return false;
-        }
-
-    private:
-        std::vector<double> m_times;
-        size_t m_taps;
-        double m_window;
-    };
 
 }

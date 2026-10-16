@@ -5,7 +5,6 @@
 #include <chrono>
 #include <cstdio>
 #include <string>
-#include <thread>
 #include <minimum.hpp>
 #include <minimum_logic.hpp>
 
@@ -14,9 +13,9 @@ using namespace geode::prelude;
 // Frame gate
 //
 // Hooks CCDirector::drawScene. On every platform it measures frame times (FPS counter, 1% low,
-// spike logger, adaptive particle cap), applies the game quality setting and lets the frame
-// run normally. On Windows it can also decide per frame whether the scene is drawn or only
-// updated ("logic-only" frame). That is used for:
+// spike logger, adaptive particle cap, bottleneck readout), applies the game quality setting and
+// lets the frame run normally. On Windows it can also decide per frame whether the scene is drawn
+// or only updated ("logic-only" frame). That is used for:
 //
 //   * Background throttle: while the game window is not the foreground window, draw at a
 //     low rate (default 20 fps). Nobody is looking, so the GPU is freed up.
@@ -37,13 +36,9 @@ using namespace geode::prelude;
 // the measurement windows, so coming back to the game never shows a fake FPS drop or makes the
 // low latency guard back off.
 //
-// Adaptive cap window: only DRAWN frames are counted, a logic-only frame is cheap by design and
-// would dilute the slow-frame ratio. A drawn frame is judged by the time since the previous
-// DRAWN frame, against the target frame time or the gate's own interval (whichever is longer),
-// see minimum::isSlowFrame. The step decision itself is minimum::AdaptiveCap (unit tested).
-//
-// Precise frame limiter (Windows / macOS, opt-in): at the end of a drawn frame, sleeps until the
-// deadline and spins the last millisecond. Only while the game's own cap is off.
+// Counting rules: the adaptive particle cap counts DRAWN frames only, because logic-only frames
+// are fast and would hide slow drawn frames. The FPS counter, 1% low and the bottleneck readout
+// use drawn frames too.
 //
 // The stats line is short and updated twice a second. A long CCLabelBMFont string rebuilds one
 // sprite per character on every setString, which is itself a small periodic hitch.
@@ -57,10 +52,21 @@ namespace {
     constexpr float kHudMargin = 4.f;
 #endif
 
+    // The bottleneck, as a short label for the HUD.
+    char const* bottleneckSuffix(uint8_t value) {
+        auto const label = minimum::bottleneckLabel(static_cast<minimum::Bottleneck>(value));
+        static char buffer[32];
+        if (!*label) return "";
+        std::snprintf(buffer, sizeof(buffer), " | %s", label);
+        return buffer;
+    }
+
     class StatsHud : public CCNode {
     protected:
         CCLabelBMFont* m_label = nullptr;
         std::string m_lastText;
+        bool m_aligned = false;
+        bool m_alignedRight = false;
 
         bool init() override {
             if (!CCNode::init()) return false;
@@ -83,18 +89,19 @@ namespace {
             bool bottom = cfg.hudCorner == minimum::HudCorner::BottomLeft
                        || cfg.hudCorner == minimum::HudCorner::BottomRight;
 
+            // The detailed HUD has several lines, so each line is aligned to the side of the corner.
+            if (!m_aligned || m_alignedRight != right) {
+                m_label->setAlignment(right ? kCCTextAlignmentRight : kCCTextAlignmentLeft);
+                m_aligned = true;
+                m_alignedRight = right;
+            }
+
             m_label->setAnchorPoint({right ? 1.f : 0.f, bottom ? 0.f : 1.f});
             m_label->setPosition({
                 right ? winSize.width - kHudMargin : kHudMargin,
                 bottom ? kHudMargin : winSize.height - kHudMargin
             });
-            // Stay on screen: the Detailed text is long, and HUD Scale goes up to 2.0. The size of the
-            // label is that of the text set last, so a longer text is fitted on the next tick.
-            auto const natural = m_label->getContentSize();
-            m_label->setScale(minimum::hudFitScale(
-                cfg.hudScale, natural.width, natural.height,
-                winSize.width - 2.f * kHudMargin, winSize.height - 2.f * kHudMargin
-            ));
+            m_label->setScale(cfg.hudScale);
             m_label->setOpacity(cfg.hudOpacity);
             m_label->setVisible(cfg.showStats);
         }
@@ -102,20 +109,18 @@ namespace {
         void tick(float) {
             auto const& cfg = minimum::config();
             this->applyLayout();
-
-            auto& counters = minimum::counters();
-            // The worst frame of the last half second. Taking it resets it, so it is read here
-            // even when the line is hidden and can not grow forever.
-            uint32_t const worstUs = counters.worstFrameUs.exchange(0, std::memory_order_relaxed);
             if (!cfg.showStats) return;
 
+            auto& counters = minimum::counters();
             auto& stats = minimum::frameStats();
             uint32_t fps = counters.fps.load();
             bool throttled = counters.throttled.load();
+            bool const hot = counters.thermalStep.load(std::memory_order_relaxed) > 0;
+            char const* thermal = hot ? " | thermal" : "";
 
             // The FPS number is measured with the wall clock inside the drawScene hook,
             // not derived from the scheduler, so it is the real number of frames drawn.
-            char text[640];
+            char text[420];
             if (cfg.hudDetailed) {
                 char const* sync = "";
                 if (cfg.lowLatency) {
@@ -126,71 +131,55 @@ namespace {
                         default: break;
                     }
                 }
+                char const* bottleneck = bottleneckSuffix(counters.bottleneck.load(std::memory_order_relaxed));
+
                 uint32_t low = static_cast<uint32_t>(stats.lowFps(240) + 0.5);
                 double frameMs = stats.averageFrameMs(60);
 
-                // Line 1: the numbers a player compares with other counters.
-                char line1[300];
+                // Line 1: the frame rate and what limits it.
+                char first[220];
 #ifdef GEODE_IS_ANDROID
-                // On Android the buffer swap happens after drawScene returns, so the CPU time is
-                // the CPU work of the frame and the CPU-bound / GPU-bound readout means something.
-                // On the other platforms drawScene includes the swap (vsync wait), so it is left out.
                 double cpuMs = stats.averageCpuMs(60);
-                auto const bottleneck = static_cast<minimum::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed));
-                std::string_view const bottleneckText = minimum::bottleneckLabel(bottleneck);
                 std::snprintf(
-                    line1, sizeof(line1),
-                    "%s%u FPS%s | low %u | %.1f ms | worst %.0f ms | cpu %.1f ms | logic %u/s | spikes %llu%s%s%.*s",
+                    first, sizeof(first),
+                    "%s%u FPS%s | low %u | %.1f ms | cpu %.1f ms | logic %u/s | spikes %llu%s%s%s",
                     cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
-                    low, frameMs, worstUs / 1000.0, cpuMs, counters.logicFps.load(),
-                    static_cast<unsigned long long>(counters.spikes.load()), sync,
-                    bottleneckText.empty() ? "" : " | ", static_cast<int>(bottleneckText.size()), bottleneckText.data()
+                    low, frameMs, cpuMs, counters.logicFps.load(),
+                    static_cast<unsigned long long>(counters.spikes.load()), sync, bottleneck, thermal
                 );
 #else
                 std::snprintf(
-                    line1, sizeof(line1),
-                    "%s%u FPS%s | low %u | %.1f ms | worst %.0f ms | logic %u/s | spikes %llu%s",
+                    first, sizeof(first),
+                    "%s%u FPS%s | low %u | %.1f ms | logic %u/s | spikes %llu%s%s%s",
                     cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "",
-                    low, frameMs, worstUs / 1000.0, counters.logicFps.load(),
-                    static_cast<unsigned long long>(counters.spikes.load()), sync
+                    low, frameMs, counters.logicFps.load(),
+                    static_cast<unsigned long long>(counters.spikes.load()), sync, bottleneck, thermal
                 );
 #endif
 
-                // Line 2, the proof line: what Minimum is doing for you right now.
-                char extra[48] = "";
-                if (counters.thermal.load(std::memory_order_relaxed)) {
-                    std::snprintf(extra, sizeof(extra), " | thermal");
-                }
-                char bench[32] = "";
-                if (minimum::benchmarkActive()) {
-                    double const nowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-                    std::snprintf(bench, sizeof(bench), " | REC %.0f s", minimum::benchmarkElapsed(nowSeconds));
-                }
-                char line2[200];
+                // Line 2: the proof line. Skipped draws and capped systems per second, the cap step,
+                // and the latency guard's trips.
+                char second[160];
                 std::snprintf(
-                    line2, sizeof(line2),
-                    "skipped %u/s | culled %u/s | capped %u/s | cap step %d (%u) | trips %u%s%s",
-                    counters.skippedPerSec.load(std::memory_order_relaxed),
-                    counters.culledPerSec.load(std::memory_order_relaxed),
-                    counters.cappedPerSec.load(std::memory_order_relaxed),
-                    minimum::currentCapStep(), minimum::effectiveParticleCap(),
-                    counters.latencyTrips.load(std::memory_order_relaxed), extra, bench
+                    second, sizeof(second),
+                    "skips %u/s | capped %u/s | logic-only %u/s | cap step %u | trips %u",
+                    counters.skipsPerSec.load(), counters.cappedPerSec.load(), counters.logicOnlyPerSec.load(),
+                    counters.capStep.load(), counters.latencyTrips.load()
                 );
 
-                // Line 3: totals since the game started.
-                char line3[200];
+                // Line 3: running totals of the proof counters.
+                char third[200];
                 std::snprintf(
-                    line3, sizeof(line3),
-                    "drawn %llu | logic-only %llu | idle skipped %llu | culled %llu | pools capped %llu | budgeted %llu",
-                    static_cast<unsigned long long>(counters.framesDrawn.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.framesLogicOnly.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.idleParticleDrawsSkipped.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.particleDrawsCulled.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.particlePoolsCapped.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.spawnsBudgeted.load(std::memory_order_relaxed))
+                    third, sizeof(third),
+                    "drawn %llu | logic-only %llu | idle skips %llu | off-screen skips %llu | pools capped %llu",
+                    static_cast<unsigned long long>(counters.framesDrawn.load()),
+                    static_cast<unsigned long long>(counters.framesLogicOnly.load()),
+                    static_cast<unsigned long long>(counters.idleParticleDrawsSkipped.load()),
+                    static_cast<unsigned long long>(counters.offscreenParticleDrawsSkipped.load()),
+                    static_cast<unsigned long long>(counters.particlePoolsCapped.load())
                 );
 
-                std::snprintf(text, sizeof(text), "%s\n%s\n%s", line1, line2, line3);
+                std::snprintf(text, sizeof(text), "%s\n%s\n%s", first, second, third);
             }
             else {
                 // When the game updates its logic at a clearly different rate than it draws
@@ -201,22 +190,16 @@ namespace {
                     std::snprintf(logicText, sizeof(logicText), " | logic %u", logic);
                 }
                 std::snprintf(
-                    text, sizeof(text), "%s%u FPS%s%s",
-                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "", logicText
+                    text, sizeof(text), "%s%u FPS%s%s%s",
+                    cfg.enabled ? "" : "(OFF) ", fps, throttled ? " (background)" : "", logicText, thermal
                 );
             }
 
             // Green when it holds the target, yellow when it does not quite, red when bad.
-            // Before the first measurement the number is 0: that is "no data yet", not "bad".
-            if (fps == 0) {
-                m_label->setColor(ccc3(200, 200, 200));
-            }
-            else {
-                switch (minimum::classifyFps(fps, cfg.targetFps)) {
-                    case minimum::FpsBand::Good: m_label->setColor(ccc3(120, 255, 120)); break;
-                    case minimum::FpsBand::Okay: m_label->setColor(ccc3(255, 225, 90)); break;
-                    case minimum::FpsBand::Bad: m_label->setColor(ccc3(255, 100, 100)); break;
-                }
+            switch (minimum::classifyFps(fps, cfg.targetFps)) {
+                case minimum::FpsBand::Good: m_label->setColor(ccc3(120, 255, 120)); break;
+                case minimum::FpsBand::Okay: m_label->setColor(ccc3(255, 225, 90)); break;
+                case minimum::FpsBand::Bad: m_label->setColor(ccc3(255, 100, 100)); break;
             }
 
             // setString rebuilds the whole label, only do it when the text changed.
@@ -272,41 +255,31 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static uint32_t s_fpsDrawn = 0;
         static uint32_t s_fpsAll = 0;
         static uint64_t s_updatesSeen = 0;
+        static uint64_t s_skipsSeen = 0;
+        static uint64_t s_cappedSeen = 0;
+        static uint64_t s_logicOnlySeen = 0;
         static clock::time_point s_fpsStart = clock::now();
         static minimum::LatencyGate s_latencyGate;
         static bool s_syncOk = false;
-        static uint64_t s_skipSeen = 0;
-        static uint64_t s_cappedSeen = 0;
-        static uint64_t s_culledSeen = 0;
-#ifdef GEODE_IS_ANDROID
-        static clock::time_point s_thermalNext{};
-#endif
-#ifdef GEODE_IS_DESKTOP
-        static double s_deadline = 0.0;   // precise frame limiter, seconds on the steady clock
-#endif
+
+        // Starts this call's particle budget. Systems created from here on count against it.
+        minimum::particleFrameBegin();
 
         auto const now = clock::now();
-        double const nowSeconds = std::chrono::duration<double>(now.time_since_epoch()).count();
         double const rawDelta = std::chrono::duration<double>(now - s_last).count();
         s_last = now;
         // After a hitch (alt-tab, level load) do not try to "catch up" with a burst of draws.
         double const wallDelta = std::min(rawDelta, 0.25);
+        double const nowSeconds = std::chrono::duration<double>(now.time_since_epoch()).count();
 
         minimum::refreshConfigIfDue(now);
         auto const& cfg = minimum::config();
         auto& counters = minimum::counters();
 
-        // One tick per call of this hook, drawn or not: the spawn budget uses it to tell frames
-        // apart. framesInLevel counts calls that STARTED with a level open, so the frame that
-        // loads a level never counts (see kSpawnBudgetGraceFrames). Only looked up when needed.
-        counters.frameIndex.fetch_add(1, std::memory_order_relaxed);
-        if (cfg.spawnBudget > 0 && PlayLayer::get()) {
-            uint32_t const inLevel = counters.framesInLevel.load(std::memory_order_relaxed);
-            if (inLevel < 1000000u) counters.framesInLevel.store(inLevel + 1, std::memory_order_relaxed);
-        }
-        else {
-            counters.framesInLevel.store(0, std::memory_order_relaxed);
-        }
+        // Frame rate limit (Android and iOS, only changes something when the settings changed),
+        // thermal status (Android, once a second).
+        minimum::applyFrameRateLimit();
+        minimum::pollThermal(nowSeconds);
 
         unsigned int totalFrames = this->getTotalFrames();
         bool const focused = minimum::processHasForeground(now);
@@ -323,12 +296,6 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             s_windowSlow = 0;
             s_lastDrawn = now;
             s_updatesSeen = counters.schedulerUpdates.load(std::memory_order_relaxed);
-            s_skipSeen = counters.idleParticleDrawsSkipped.load(std::memory_order_relaxed);
-            s_cappedSeen = counters.particlePoolsCapped.load(std::memory_order_relaxed);
-            s_culledSeen = counters.particleDrawsCulled.load(std::memory_order_relaxed);
-#ifdef GEODE_IS_DESKTOP
-            s_deadline = 0.0;
-#endif
             minimum::frameStats().clear();
         }
         bool const measurable = totalFrames >= 300 && focused && !resumed;
@@ -340,7 +307,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         // Called every frame, stateless: it makes the volume match the focus state now.
         minimum::audioPoll(focused);
 
-        // ---- Measured FPS (wall clock, twice a second) --------------------------------
+        // ---- Measured FPS, bottleneck and per-second counters (twice a second) --------
         ++s_fpsAll;
         {
             double const span = std::chrono::duration<double>(now - s_fpsStart).count();
@@ -361,44 +328,34 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 // minimum::LatencyGate). It is not allowed to flip on and off every window.
                 bool const wantSync = cfg.enabled && cfg.lowLatency && focused && totalFrames >= 300;
                 s_syncOk = s_latencyGate.update(fps, nowSeconds, wantSync);
-                counters.latencyTrips.store(static_cast<uint32_t>(std::max(0, s_latencyGate.trips())), std::memory_order_relaxed);
 
-                // Proof line numbers: how much each optimization did in the last window.
-                uint64_t const skipped = counters.idleParticleDrawsSkipped.load(std::memory_order_relaxed);
+                // Per second numbers for the stats line: skipped draws (idle + off-screen), capped
+                // systems, logic-only frames. Running totals only ever grow, so the difference is the
+                // count of this window.
+                uint64_t const skips = counters.idleParticleDrawsSkipped.load(std::memory_order_relaxed)
+                                     + counters.offscreenParticleDrawsSkipped.load(std::memory_order_relaxed);
                 uint64_t const capped = counters.particlePoolsCapped.load(std::memory_order_relaxed);
-                uint64_t const culled = counters.particleDrawsCulled.load(std::memory_order_relaxed);
-                counters.skippedPerSec.store(minimum::ratePerSecond(skipped >= s_skipSeen ? skipped - s_skipSeen : 0, span), std::memory_order_relaxed);
-                counters.cappedPerSec.store(minimum::ratePerSecond(capped >= s_cappedSeen ? capped - s_cappedSeen : 0, span), std::memory_order_relaxed);
-                counters.culledPerSec.store(minimum::ratePerSecond(culled >= s_culledSeen ? culled - s_culledSeen : 0, span), std::memory_order_relaxed);
-                s_skipSeen = skipped;
+                uint64_t const logicOnly = counters.framesLogicOnly.load(std::memory_order_relaxed);
+                counters.skipsPerSec.store(static_cast<uint32_t>(minimum::perSecond(skips - s_skipsSeen, span)));
+                counters.cappedPerSec.store(static_cast<uint32_t>(minimum::perSecond(capped - s_cappedSeen, span)));
+                counters.logicOnlyPerSec.store(static_cast<uint32_t>(minimum::perSecond(logicOnly - s_logicOnlySeen, span)));
+                s_skipsSeen = skips;
                 s_cappedSeen = capped;
-                s_culledSeen = culled;
+                s_logicOnlySeen = logicOnly;
 
-#ifdef GEODE_IS_ANDROID
-                // CPU-bound / GPU-bound. Android only: there the buffer swap happens after
-                // drawScene returns, so the stored CPU time really is CPU work (see below).
-                {
-                    bool const syncActive = counters.latencyState.load(std::memory_order_relaxed)
-                        == static_cast<uint8_t>(minimum::LatencyState::Active);
-                    counters.bottleneck.store(
-                        static_cast<uint8_t>(minimum::bottleneckFor(minimum::frameStats(), syncActive)),
-                        std::memory_order_relaxed
-                    );
-                }
+                counters.capStep.store(static_cast<uint32_t>(minimum::currentCapStep()));
+                counters.thermalStep.store(static_cast<uint32_t>(minimum::thermalCapStep()));
+                counters.latencyTrips.store(static_cast<uint32_t>(s_latencyGate.trips()));
 
-                // Thermal status: asks a system service, so only every 2 seconds.
-                {
-                    using namespace std::chrono_literals;
-                    if (now >= s_thermalNext) {
-                        s_thermalNext = now + 2s;
-                        int const status = (cfg.enabled && cfg.capParticles) ? minimum::readThermalStatus() : -1;
-                        minimum::noteThermalStatus(status, nowSeconds);
-                    }
-                }
-#endif
-
-                // Android / iOS "Unlock FPS": re-applies the frame interval when the setting changed.
-                minimum::applyFrameUnlock();
+                // CPU or GPU bound, from the CPU time of the newest 60 drawn frames.
+                bool const syncActive = counters.latencyState.load(std::memory_order_relaxed)
+                                     == static_cast<uint8_t>(minimum::LatencyState::Active);
+                auto const& stats = minimum::frameStats();
+                auto const bottleneck = minimum::classifyBottleneck(
+                    stats.averageCpuMs(minimum::kBottleneckWindow), stats.averageFrameMs(minimum::kBottleneckWindow),
+                    stats.size(), syncActive
+                );
+                counters.bottleneck.store(static_cast<uint8_t>(bottleneck));
 
                 s_fpsDrawn = 0;
                 s_fpsAll = 0;
@@ -406,9 +363,7 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             }
         }
 
-        // ---- Adaptive particle cap window (once per second) -----------------------
-        // The counts are filled after a frame is DRAWN (below), never here: logic-only frames
-        // return before that and so do not dilute the slow-frame ratio.
+        // ---- Adaptive particle cap window (once per second, drawn frames counted below) -----
         {
             using namespace std::chrono_literals;
             if (now - s_windowStart >= 1s) {
@@ -419,15 +374,10 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             }
         }
 
-        // ---- Frame time tracking and spike logger --------------------------------
+        // ---- Spike logger ----------------------------------------------------------
         // Skipped while loading (first 300 frames), while unfocused and after the game was
         // away, where long gaps are expected.
         if (measurable) {
-            uint32_t us = static_cast<uint32_t>(std::min(rawDelta * 1e6, 4.0e9));
-            if (us > counters.worstFrameUs.load(std::memory_order_relaxed)) {
-                counters.worstFrameUs.store(us, std::memory_order_relaxed);
-            }
-
             double ms = rawDelta * 1000.0;
             if (cfg.spikeLogger && ms >= cfg.spikeThresholdMs) {
                 ++counters.spikes;
@@ -458,10 +408,6 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
         s_createdSeen = counters.particleSystemsCreated.load();
 
-        // Seconds the gate wants between two drawn frames (0 = no gate). Also tells the slow frame
-        // check and the precise limiter that draws are being paced on purpose.
-        double gateInterval = 0.0;
-
 #ifdef GEODE_IS_WINDOWS
         // ---- Frame gate ----------------------------------------------------------
         // Seconds between two drawn frames. 0 means: draw every frame.
@@ -475,7 +421,6 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             }
         }
 
-        gateInterval = interval;
         counters.throttled.store(cfg.enabled && cfg.backgroundThrottle && !focused);
 
         bool mustDraw = interval <= 0.0 || totalFrames < 300 || this->getNextScene() != nullptr;
@@ -516,18 +461,16 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             double const frameMs = std::chrono::duration<double, std::milli>(drawStart - s_lastDrawn).count();
             double const workMs = std::chrono::duration<double, std::milli>(drawEnd - drawStart).count();
             minimum::frameStats().push(std::min(frameMs, 1000.0), workMs);
-
-            // Adaptive cap window: this frame was drawn, so it counts.
-            ++s_windowFrames;
-            if (cfg.adaptiveCap && minimum::isSlowFrame(frameMs, cfg.targetFps, gateInterval)) {
-                ++s_windowSlow;
-            }
-
-            // One atomic load while no benchmark runs.
-            minimum::benchmarkFrame(nowSeconds, frameMs);
             minimum::reportCpuWork(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(drawEnd - drawStart).count()
             );
+            minimum::noteBenchmarkFrame(
+                std::chrono::duration<double>(drawEnd.time_since_epoch()).count(), frameMs, workMs
+            );
+
+            // The adaptive particle cap counts drawn frames only (see the header comment above).
+            ++s_windowFrames;
+            if (cfg.adaptiveCap && minimum::isSlowFrame(rawDelta, cfg.targetFps)) ++s_windowSlow;
         }
         else {
             minimum::reportCpuWork(0);
@@ -554,33 +497,14 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
             counters.latencyState.store(static_cast<uint8_t>(state), std::memory_order_relaxed);
         }
 
-        minimum::ensureHud(totalFrames);
+        // ---- Precise frame limiter (Windows and macOS) ----------------------------
+        // Only when the game's own frame cap is off, and never while Draw Divide or the background
+        // throttle decides the pace. Holds each drawn frame to the Target FPS.
+        if (cfg.enabled && cfg.preciseFrameLimit && !cfg.drawDivide
+            && !counters.throttled.load(std::memory_order_relaxed) && minimum::gameFrameCapOff()) {
+            minimum::preciseFrameWait(now, 1.0 / cfg.targetFps);
+        }
 
-#ifdef GEODE_IS_DESKTOP
-        // ---- Precise frame limiter (Windows / macOS, opt-in) ---------------------------
-        // Sleep until the frame deadline, then spin the last millisecond, so frames come out
-        // exactly 1 / Target FPS apart. Not while the gate paces the draws, not while loading or
-        // unfocused, and not when the game's own cap is already holding the target (two
-        // limiters on top of each other make frame times jitter).
-        if (cfg.enabled && cfg.preciseFrameLimit && focused && totalFrames >= 300 && gateInterval <= 0.0
-            && minimum::shouldPreciseLimit(true, cfg.targetFps, this->getAnimationInterval())) {
-            double const frameInterval = 1.0 / cfg.targetFps;
-            auto const secondsNow = [] {
-                return std::chrono::duration<double>(clock::now().time_since_epoch()).count();
-            };
-            double const deadline = minimum::nextDeadline(s_deadline, secondsNow(), frameInterval);
-            auto const plan = minimum::planWait(secondsNow(), deadline, 0.001);
-            if (plan.sleepSeconds > 0.0) {
-                std::this_thread::sleep_for(std::chrono::duration<double>(plan.sleepSeconds));
-            }
-            while (secondsNow() < deadline) {
-                // spin: the OS wake up is not exact, the last millisecond is waited out here
-            }
-            s_deadline = deadline;
-        }
-        else {
-            s_deadline = 0.0;
-        }
-#endif
+        minimum::ensureHud(totalFrames);
     }
 };

@@ -16,10 +16,7 @@
 		"utility"
 	],
 	"incompatibilities": {
-		"mat.draw-divide": {
-			"breaking": false,
-			"version": ">=v1.0.0"
-		}
+		"mat.draw-divide": ">=0.0.0"
 	},
 	"resources": {
 		"sprites": [
@@ -137,14 +134,14 @@
 		},
 		"adaptive-cap": {
 			"name": "Adaptive Particle Cap",
-			"description": "If the game keeps missing the Target FPS, the particle cap is lowered step by step (down to 1/8) and raised again once things are smooth. Visual only.",
+			"description": "If the game keeps missing the Target FPS, the particle cap is lowered step by step (down to 1/8) and raised again once things are smooth. On Android the cap also drops while the phone is hot and comes back after it cools down. Visual only.",
 			"type": "bool",
 			"default": true,
 			"enable-if": "cap-particles"
 		},
 		"cull-offscreen-particles": {
-			"name": "Cull Off-screen Particles",
-			"description": "Skips drawing particle systems that are completely off screen (with a safety margin). Only the drawing is skipped, the particles still update, so effects look the same when they come back into view. Turn it off if an effect ever vanishes near the edge of the screen.",
+			"name": "Skip Off-Screen Particles",
+			"description": "Does not draw particle systems that are far outside the screen. They are still updated, so effects stay in sync and look the same when they come back on screen. Visual only.",
 			"type": "bool",
 			"default": true,
 			"platforms": [
@@ -155,11 +152,11 @@
 			]
 		},
 		"spawn-budget": {
-			"name": "Spawn Budget",
-			"description": "Max new particle systems per frame while you are in a level, 0 = off. Systems created beyond the budget still appear, but with a tiny particle pool. Can smooth frames where a level spawns a lot of effects at once, at the cost of weaker effects on those frames. Only affects systems created after you change it.",
+			"name": "Particle Spawn Budget",
+			"description": "How many particle systems per frame get a full pool during a level. 0 is off. Systems past the limit still exist, but with a pool of 4 particles, so a burst of effects looks thinner instead of stalling the frame.",
 			"type": "int",
 			"min": 0,
-			"max": 200,
+			"max": 500,
 			"default": 0,
 			"platforms": [
 				"win",
@@ -178,33 +175,17 @@
 			"type": "bool",
 			"default": false
 		},
-		"title-android": {
-			"type": "title",
-			"name": "Android",
-			"platforms": [
-				"android"
-			]
-		},
-		"android-cpu-hint": {
-			"name": "CPU Speed Hint",
-			"description": "Tells Android how long each frame takes so it can raise the CPU speed before a heavy frame arrives, which helps with stutter. Needs Android 13 (API 33) or newer, does nothing on older versions. May use a bit more battery.",
-			"type": "bool",
-			"default": true,
-			"platforms": [
-				"android"
-			]
-		},
 		"title-frame-rate": {
 			"type": "title",
-			"name": "Frame Rate (Android / iOS)",
+			"name": "Frame Rate (Android and iOS)",
 			"platforms": [
 				"android",
 				"ios"
 			]
 		},
 		"fps-unlock": {
-			"name": "Unlock FPS",
-			"description": "OFF by default. Asks the system for a higher frame rate than the game's usual 60. Only helps on a screen that can show more, and the system can still lower it. Uses more battery. Experimental: if game speed or anything else feels off, turn it off.",
+			"name": "Unlock Frame Rate",
+			"description": "Asks the system for more frames per second than the game's default 60. Your screen's refresh rate still decides the real maximum. Off by default.",
 			"type": "bool",
 			"default": false,
 			"platforms": [
@@ -213,8 +194,8 @@
 			]
 		},
 		"fps-limit": {
-			"name": "FPS Limit",
-			"description": "The frame rate to ask the system for while Unlock FPS is on. Set it to your screen's refresh rate (90, 120, 144...).",
+			"name": "Frame Rate Limit",
+			"description": "The highest frame rate asked for when Unlock Frame Rate is on. 120 suits a 120 Hz screen. Values above your screen's refresh rate do nothing.",
 			"type": "int",
 			"min": 30,
 			"max": 240,
@@ -224,6 +205,22 @@
 				"ios"
 			],
 			"enable-if": "fps-unlock"
+		},
+		"title-android": {
+			"type": "title",
+			"name": "Android",
+			"platforms": [
+				"android"
+			]
+		},
+		"android-cpu-hint": {
+			"name": "CPU Speed Hint",
+			"description": "Tells Android how long each frame takes so it can raise the CPU speed before a heavy frame arrives, which helps with stutter. Needs Android 13 or newer, does nothing on older versions. May use a bit more battery.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"android"
+			]
 		},
 		"title-system": {
 			"type": "title",
@@ -343,7 +340,7 @@
 		},
 		"title-pacing": {
 			"type": "title",
-			"name": "Frame Pacing (advanced, Windows / macOS)",
+			"name": "Frame Pacing (Windows and macOS)",
 			"platforms": [
 				"win",
 				"mac"
@@ -351,7 +348,7 @@
 		},
 		"precise-frame-limit": {
 			"name": "Precise Frame Limiter",
-			"description": "OFF by default. Holds your Target FPS by sleeping until the frame deadline and then spinning for the last millisecond, which gives steadier frame times than a plain sleep. Only runs while the game's own FPS cap is off and Draw Divide is off, and works best with VSync off. Uses a little more CPU.",
+			"description": "When the game's own FPS cap is off, Minimum holds each frame to your Target FPS itself, sleeping and then spinning the last millisecond for an exact pace. Uses a little more CPU. Not used while Draw Divide is on.",
 			"type": "bool",
 			"default": false,
 			"platforms": [
@@ -371,7 +368,7 @@
 		},
 		"hud-detail": {
 			"name": "Stats Detail",
-			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, worst frame, logic updates per second, spikes and the Low Latency status, a proof line (skipped / culled / capped particle draws per second, particle cap step, Low Latency trips, thermal) and a totals line. On Android it also shows CPU time and a CPU-bound / GPU-bound readout.",
+			"description": "Compact shows only the FPS. Detailed adds the 1% low, frame time, logic updates per second, spikes, the Low Latency status, whether the CPU or the GPU is the bottleneck, the draw and skip counters, and CPU time on Android.",
 			"type": "string",
 			"default": "Compact",
 			"one-of": [

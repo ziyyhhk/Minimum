@@ -1,24 +1,21 @@
 # v3.2.2
 
-- New: Cull Off-screen Particles (on by default). The draw of a particle system whose particles are all clearly outside the screen is skipped. Only the drawing is skipped, never the update, so emission and lifetimes run exactly as before and effects look the same when they come back into view. If you ever see an effect vanish near the edge of the screen, turn it off in the settings.
-- New: Spawn Budget (off by default). Caps how many new particle systems a level can create per frame. Systems over the budget are still created, with a tiny pool. It never applies while a level is loading, only after you have been in it for a moment.
-- New: Detailed stats now show three lines. Line 1 adds the worst frame of the last half second. Line 2 is a proof line: particle draws skipped, culled and capped per second, the current particle cap step and cap, Low Latency backoff trips, and `thermal` when the thermal response is active. Line 3 shows the totals: frames drawn, logic-only frames, idle draws skipped, culled draws, capped pools and budgeted systems. These counters were collected before but never shown.
-- New: CPU-bound / GPU-bound readout on Android, in the popup's frame line and in the Detailed stats. It looks at how much of the last 60 frames the CPU was busy: `CPU-bound` at 85% or more, `GPU-bound` below 50% while Low Latency sync is on, nothing otherwise. It is Android only because on the other platforms the measured frame work includes waiting for the display.
-- New: Thermal response on Android 11+. While the device reports a severe thermal status or worse, the particle cap goes down one more step. It is given back after 30 seconds of normal temperature. The Detailed stats show `thermal` while it is active. (iOS is not done: it needs Objective-C.)
-- New: Unlock FPS and FPS Limit (30 to 240, default 120) on Android and iOS, off by default. Asks the system for a higher frame rate than the game's usual 60. Experimental: the screen and the system still decide what you get, so check game speed after turning it on.
-- New: Precise Frame Limiter on Windows and macOS, off by default. Sleeps until the frame deadline, then spins for the last millisecond, to hold your Target FPS with steadier frame times. Only runs while the game's own FPS cap is off and Draw Divide is off.
-- New: Benchmark mode (hidden). Tap the logo in the Minimum popup five times quickly to record 60 seconds of frame times to a CSV (`benchmark-<time>.csv`) in the mod's save folder. Tap it five times again to cancel.
-- Fixed: the popup could run off a very short screen (for example 224 high). When even the tightest layout is too tall, the whole popup is now scaled down to fit.
-- Fixed: the Adaptive Particle Cap counted frames that were not drawn when it decided how many frames were slow, so with Draw Divide the slow frames were diluted and the cap never came down. It now only counts drawn frames, and takes the Draw Divide interval into account so a 30 FPS Draw Divide is not mistaken for a slow game. The decision itself moved into the tested logic file.
-- Fixed: Low Latency Mode's backoff counter only ever went up, so one bad minute kept the backoff long for the rest of the session. Every 2 minutes with the sync running and no new backoff now forgives one (never below 0). The 10 s, 20 s ... 5 min backoff itself is unchanged.
-- Fixed: the worst frame time was recorded but never used. It is now shown in the Detailed stats and starts over every half second.
-- Fixed: the stats line could run off the screen at a high HUD Scale, and the new three line Detailed text made that more likely. It now shrinks just enough to stay on screen.
-- Fixed: the FPS number showed in red before the first measurement (0 FPS), as if the game was running badly. It is now grey until there is a number, in the popup and in the stats line.
-- Changed: Minimum now says it conflicts with `mat.draw-divide` (Geode shows a warning, neither mod is blocked from loading).
-- Changed: the built-in copy of the logo is now made by `tools/embed_logo.py` from `resources/logo_round.png`, and its header says what it really is (a 128 x 128 downscale of the 256 x 256 logo). The unused duplicate `resources/logo.png` was removed.
-- Changed: the Android CPU Speed Hint text now says Android 13 (API level 33), checked against the NDK header (`__ANDROID_API_T__`).
-- Changed: `src/mobile_fps.cpp` read settings that did not exist and was never part of the build. It was rewritten as the real Unlock FPS implementation and is now built.
-- Under the hood: new unit tests for all the new logic, a CI job that builds and runs them (packaging waits for it), `build-tests/` is git-ignored, version 3.2.2.
+- New: off-screen particle culling. A particle effect that is fully off screen, with a margin for how far its particles can travel, is not drawn. It still updates, so it looks the same when it comes back. Only effects that use relative position mode are culled. Setting: *Cull Off-Screen Particles* (on by default).
+- New: spawn budget. Limits how many particles a level may hold while it runs. 0 (the default) means no limit. Setting: *Spawn Budget*, 0 to 500.
+- New: thermal response on Android. When the phone reports a severe or hotter state, the particle cap is lowered at once, and it goes back up after 30 s at a normal temperature. Works together with *Adaptive Particle Cap*.
+- New: real FPS unlock on Android and iOS. *FPS Unlock* replaces the game's own frame cap with *FPS Limit* (30 to 240). Off by default.
+- New: precise frame limiter on Windows and macOS. The last part of each frame wait is spun instead of slept, so frames land closer to their target time. Off by default. Game logic and timing are not changed.
+- New: bottleneck readout. The popup and the Detailed stats say whether the CPU or the GPU is the limit, based on the last 60 frames.
+- New: Detailed stats show three lines: frame numbers, skips and caps, and running draw counts.
+- New: hidden benchmark. Five quick taps on the live FPS card in the popup record 60 s of frame times to a CSV file in the mod's save folder (`benchmark-<unix time>.csv`, columns `elapsed_s,frame_ms,cpu_ms`). Tap again to stop early.
+- Fixed: the popup could open at full height on a short screen. It is now scaled to fit after it opens.
+- Fixed: the adaptive cap counted frames before they were drawn. It now counts only drawn frames, after the draw, against your Target FPS.
+- Fixed: Low Latency Mode never forgave its trips, so the backoff kept growing. After 120 s of running without a trip, one trip is forgiven. The 10 s to 5 minute backoff is unchanged.
+- Fixed: pause menu buttons that are hidden inside a hidden parent no longer move the logo button.
+- Fixed: the logo in the pause menu could be stored at 128 px while its comment said otherwise. The built-in copy is now regenerated at 256 px from `resources/logo_round.png`.
+- Changed: at 0 FPS the FPS line is drawn in a neutral colour instead of a band colour.
+- Removed: an unused worst-frame counter.
+- Developers: the logic tests run in CI on Ubuntu. The Geode build action is pinned to a commit SHA. `mobile_fps.cpp` is replaced by `frame_rate.cpp`. `tools/embed_logo.py` regenerates the logo data. `.gitignore` ignores `build-tests/`.
 
 # v3.2.1
 
