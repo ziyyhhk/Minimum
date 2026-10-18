@@ -44,7 +44,7 @@ namespace minimum {
             std::filesystem::create_directories(dir, ec);
 
             auto const stamp = static_cast<long long>(std::time(nullptr));
-            auto const path = dir / ("benchmark-" + std::to_string(stamp) + ".csv");
+            auto const path = dir / ("benchmark_" + std::to_string(stamp) + ".csv");
             std::ofstream out(path, std::ios::binary);
             if (!out) {
                 log::warn("Minimum: could not write the benchmark to {}", path.string());

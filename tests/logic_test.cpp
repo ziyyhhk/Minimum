@@ -429,8 +429,8 @@ namespace {
         CHECK(classifyBottleneck(4.8, 16.0, 60, false) == Bottleneck::None);       // sync off: no GPU claim
         CHECK(classifyBottleneck(9.6, 16.0, 60, true) == Bottleneck::None);        // share 0.6
         CHECK(classifyBottleneck(0.0, 0.0, 60, true) == Bottleneck::None);
-        CHECK(std::string(bottleneckLabel(Bottleneck::CpuBound)) == "CPU-bound");
-        CHECK(std::string(bottleneckLabel(Bottleneck::GpuBound)) == "GPU-bound");
+        CHECK(std::string(bottleneckLabel(Bottleneck::CpuBound)) == "CPU bound");
+        CHECK(std::string(bottleneckLabel(Bottleneck::GpuBound)) == "GPU bound");
         CHECK(std::string(bottleneckLabel(Bottleneck::None)).empty());
     }
 
