@@ -128,6 +128,10 @@ namespace minimum {
         // Particle update + draw as a share of the CPU work of the frames in the last half
         // second, 0..100. Approximate: logic-only frames add particle time without drawn work.
         std::atomic<uint32_t> particleShare{0};
+        // The same time split into particle update (physics and quad building) and particle draw,
+        // each as a percent of frame time over the last half second.
+        std::atomic<uint32_t> particleUpdateShare{0};
+        std::atomic<uint32_t> particleDrawShare{0};
     };
 
     // Off: the setting is off. Waiting: on, but not syncing right now (loading, or it backed

@@ -181,13 +181,13 @@ namespace {
                 char third[256];
                 std::snprintf(
                     third, sizeof(third),
-                    "drawn %llu | logic only %llu | idle skips %llu | offscreen skips %llu | pools capped %llu | particles %u%% of cpu",
+                    "drawn %llu | logic only %llu | idle skips %llu | offscreen skips %llu | pools capped %llu | particles %u%% of frame time (update %u%%, draw %u%%)",
                     static_cast<unsigned long long>(counters.framesDrawn.load()),
                     static_cast<unsigned long long>(counters.framesLogicOnly.load()),
                     static_cast<unsigned long long>(counters.idleParticleDrawsSkipped.load()),
                     static_cast<unsigned long long>(counters.offscreenParticleDrawsSkipped.load()),
                     static_cast<unsigned long long>(counters.particlePoolsCapped.load()),
-                    counters.particleShare.load()
+                    counters.particleShare.load(), counters.particleUpdateShare.load(), counters.particleDrawShare.load()
                 );
 
                 std::snprintf(text, sizeof(text), "%s\n%s\n%s", first, second, third);
@@ -276,10 +276,9 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         static clock::time_point s_fpsStart = clock::now();
         static minimum::LatencyGate s_latencyGate;
         static bool s_syncOk = false;
-        // Particle time (Counters::particleUpdateNs + particleDrawNs) and the CPU work of the drawn
-        // frames, both summed over the current half-second window.
-        static uint64_t s_particleSeen = 0;
-        static uint64_t s_workNsWindow = 0;
+        // Particle update and draw time, read at the end of each half-second window.
+        static uint64_t s_particleUpdateSeen = 0;
+        static uint64_t s_particleDrawSeen = 0;
 
         // Starts this call's particle budget. Systems created from here on count against it.
         minimum::particleFrameBegin();
@@ -379,16 +378,16 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 );
                 counters.bottleneck.store(static_cast<uint8_t>(bottleneck));
 
-                // Particle update + draw as a share of the CPU work of this window.
-                uint64_t const particleNow = counters.particleUpdateNs.load(std::memory_order_relaxed)
-                                           + counters.particleDrawNs.load(std::memory_order_relaxed);
-                double const particleNs = static_cast<double>(particleNow - s_particleSeen);
-                s_particleSeen = particleNow;
-                double const share = s_workNsWindow > 0
-                    ? 100.0 * particleNs / static_cast<double>(s_workNsWindow)
-                    : 0.0;
-                counters.particleShare.store(static_cast<uint32_t>(std::min(100.0, std::max(0.0, share)) + 0.5));
-                s_workNsWindow = 0;
+                // Particle update and draw as a share of frame time (wall clock) over this window.
+                uint64_t const updateNow = counters.particleUpdateNs.load(std::memory_order_relaxed);
+                uint64_t const drawNow = counters.particleDrawNs.load(std::memory_order_relaxed);
+                double const updateSec = static_cast<double>(updateNow - s_particleUpdateSeen) * 1e-9;
+                double const drawSec = static_cast<double>(drawNow - s_particleDrawSeen) * 1e-9;
+                s_particleUpdateSeen = updateNow;
+                s_particleDrawSeen = drawNow;
+                counters.particleUpdateShare.store(minimum::percentOfTime(updateSec, span));
+                counters.particleDrawShare.store(minimum::percentOfTime(drawSec, span));
+                counters.particleShare.store(minimum::percentOfTime(updateSec + drawSec, span));
 
                 s_fpsDrawn = 0;
                 s_fpsAll = 0;
@@ -492,9 +491,6 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         auto const drawEnd = clock::now();
         ++counters.framesDrawn;
         ++s_fpsDrawn;
-        s_workNsWindow += static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(drawEnd - drawStart).count()
-        );
 
         // Per drawn frame: how long since the previous drawn frame (what the player sees) and
         // how long this call took. On Android the buffer swap happens after drawScene returns,

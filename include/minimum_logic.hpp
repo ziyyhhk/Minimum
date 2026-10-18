@@ -301,6 +301,14 @@ namespace minimum {
         return static_cast<float>(std::min(1.0, frameMs / ceilingMs));
     }
 
+    // Share of a window that was busy, as a whole percent from 0 to 100. A broken window (zero or
+    // NaN) gives 0, so the readout never shows garbage.
+    inline uint32_t percentOfTime(double busySec, double windowSec) {
+        if (!(windowSec > 0.0) || !(busySec > 0.0)) return 0;
+        double const share = 100.0 * busySec / windowSec;
+        return static_cast<uint32_t>(std::min(100.0, share) + 0.5);
+    }
+
     // The game can run its logic (scheduler updates) at a different rate than it draws frames,
     // for example 240 updates per second with 60 frames drawn. Other FPS counters often show
     // the update rate, so when the two are clearly apart the counter shows both.
