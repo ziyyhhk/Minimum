@@ -1,5 +1,8 @@
 # v3.2.2
 
+* Changed: Low Latency Mode no longer makes the CPU wait for the whole GPU after every frame. It keeps at most two frames queued in the driver with GL sync objects, which costs far less FPS and adds no wait while the GPU has work queued. It still only runs while the game holds its frame rate.
+* Fixed: the frame time graph in the popup was drawn outside its card. It now sits inside the card.
+* Changed: in detailed mode the stats text refreshes once a second, which halves the rebuilds of the long label.
 * Changed: the benchmark file is now named `benchmark_<unix time>.csv`. The bottleneck labels read CPU bound and GPU bound, and the stats lines say logic only and offscreen.
 * Changed: the mod description is plainer and says what the mod does on each platform.
 * New: the live card in the Minimum popup draws a faint frame time graph behind the numbers. It shows the newest 120 drawn frames, one bar each, colored by how far that frame ran over budget, with a line at the frame budget of your Target FPS. The card tints green, yellow or red by band, and turns blue while the benchmark records.

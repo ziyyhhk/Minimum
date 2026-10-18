@@ -103,7 +103,7 @@
 		},
 		"low-latency": {
 			"name": "Low Latency Mode",
-			"description": "Makes the CPU wait for the GPU after every frame so clicks show up sooner. Works on PC, Mac, Android and iOS. How much it helps depends on the device: on a slow GPU it can cost FPS, and on a phone that is limited by its CPU it may change nothing. It only runs while the game holds its frame rate and switches itself off for a while if FPS drops. Turn on Detailed in Stats Detail to see 'sync on' when it is running. Off by default.",
+			"description": "Keeps the graphics queue short so clicks show up sooner. At most two frames can wait in the driver, so the CPU only stops when two frames are already queued. Works on PC, Mac, Android and iOS when the device has GL sync objects. It only runs while the game holds its frame rate and switches itself off for a while if FPS drops. Turn on Detailed in Stats Detail to see sync on when it is running. Off by default.",
 			"type": "bool",
 			"default": false
 		},

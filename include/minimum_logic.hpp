@@ -103,7 +103,7 @@ namespace minimum {
     // Low latency guard
     // ---------------------------------------------------------------------------------------
 
-    // Decides when the hard GPU sync (glFinish) may run.
+    // Decides when the frame queue bound of Low Latency Mode may run.
     //
     // The sync lowers input latency but removes the overlap between CPU and GPU work, so on a
     // GPU bound machine it costs frame rate. The guard switches it off when it sees the frame

@@ -130,8 +130,8 @@ namespace minimum {
     };
 
     // Off: the setting is off. Waiting: on, but not syncing right now (loading, or it backed
-    // off because FPS dropped). Active: syncing every frame. Unavailable: this device has no
-    // glFinish we could find, so the mode can not do anything.
+    // off because FPS dropped). Active: keeping the frame queue short. Unavailable: this device
+    // has no GL sync objects we could find, so the mode can not do anything.
     enum class LatencyState : uint8_t { Off = 0, Waiting = 1, Active = 2, Unavailable = 3 };
 
     Config const& config();
@@ -155,12 +155,14 @@ namespace minimum {
     // retried on the next frame, so the volume can not get stuck low.
     void audioPoll(bool focused);
 
-    // Hard GPU sync (glFinish) after a drawn frame. Trims the queue of frames the driver
-    // keeps in flight, which can lower input-to-screen latency. Does nothing if the GL
-    // library has no glFinish. The lookup happens once, on first use, and is logged.
-    void hardGpuSync();
+    // Frame queue bound for Low Latency Mode (see latency.cpp). frameQueueWait runs before a
+    // frame is drawn, frameQueueSubmit after it, and frameQueueReset when the mode is not running.
+    void frameQueueWait();
+    void frameQueueSubmit();
+    void frameQueueReset();
 
-    // False when no glFinish could be found on this device (the lookup runs on first call).
+    // False when the GL sync object functions could not be found on this device.
+    // The lookup runs on first call and is logged.
     bool hardGpuSyncAvailable();
 
     // The round Minimum logo as a sprite: the packaged sprite when it is there, otherwise the

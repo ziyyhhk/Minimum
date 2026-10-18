@@ -47,8 +47,8 @@ Benchmark: open the Minimum popup and tap the live FPS card five times quickly. 
 * A level that already holds your FPS cap will not run faster. Nothing beats the cap.
 * The gains are in particle heavy levels, on weaker phones and laptops, in Low Detail Mode, and while the game is in the background on PC.
 * Offscreen culling only skips drawing. Particle updates still run, so an effect looks the same when it comes back on screen.
-* Low Latency Mode makes the CPU wait for the GPU after each frame, which can get a click on screen a frame or two sooner. If the GPU is already the slow part it costs FPS, so Minimum only runs it while the game holds its frame rate and turns it off for 10 s, then 20 s, 40 s and so on if FPS drops. On a phone that is CPU bound it may do nothing.
-* To check it is running: turn on Stats Detail > Detailed and look for `sync on`, or open the Minimum popup, the frame line shows `sync on` / `sync waiting` / `sync n/a`. `n/a` means this device has no glFinish we could find (it is also written to the Geode log).
+* Low Latency Mode keeps at most two frames queued in the graphics driver, so a click can reach the screen a frame or two sooner. The CPU only waits when two frames are already queued, so it costs little FPS. Minimum runs it only while the game holds its frame rate, and it pauses for 10 s, then 20 s, 40 s and so on if FPS drops. On a phone that is CPU bound it may do nothing.
+* To check it is running: turn on Stats Detail > Detailed and look for `sync on`, or open the Minimum popup, the frame line shows `sync on` / `sync waiting` / `sync n/a`. `n/a` means this device has no GL sync objects we could find (it is also written to the Geode log).
 * It is not subframe click timing. The *Click Between Frames* mod does that on Windows and works next to Minimum.
 * For the lowest latency also turn VSync off in the game's video settings and use the highest FPS cap you can hold.
 
