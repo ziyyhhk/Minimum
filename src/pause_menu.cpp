@@ -1,4 +1,5 @@
 #include <Geode/Geode.hpp>
+#include <Geode/modify/EditorPauseLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/Popup.hpp>
@@ -638,16 +639,14 @@ public:
     }
 };
 
-class $modify(MinimumPauseLayer, PauseLayer) {
-    void customSetup() {
-        PauseLayer::customSetup();
+namespace {
 
-        if (readCorner() == Corner::Hidden) return;
+    // Adds the round Minimum button to a pause-style layer: the game's pause menu, or the level
+    // editor's pause menu. `target` and `handler` are the callback of the modify class calling it.
+    void attachMinimumButton(CCNode* layer, CCObject* target, SEL_MenuHandler handler) {
         auto const started = std::chrono::steady_clock::now();
 
-        auto* button = CCMenuItemSpriteExtra::create(
-            makeButtonVisual(), this, menu_selector(MinimumPauseLayer::onMinimumButton)
-        );
+        auto* button = CCMenuItemSpriteExtra::create(makeButtonVisual(), target, handler);
         button->setID("settings-button"_spr);
 
         auto* menu = CCMenu::create();
@@ -655,11 +654,11 @@ class $modify(MinimumPauseLayer, PauseLayer) {
         button->setPosition({0.f, 0.f});
         menu->addChild(button);
 
-        // Check our menu BEFORE every other menu in the pause layer. With an equal priority the
+        // Check our menu BEFORE every other menu in the layer. With an equal priority the
         // menu that registered first wins an overlap, and ours is added last, so it used to lose.
         int lowest = 0;
         bool found = false;
-        lowestMenuPriority(this, menu, lowest, found);
+        lowestMenuPriority(layer, menu, lowest, found);
         if (found) menu->setTouchPriority(lowest - 1);
 
         // The button starts in the chosen corner right away (so it is never missing). A frame
@@ -667,18 +666,46 @@ class $modify(MinimumPauseLayer, PauseLayer) {
         // free spot. Only that second step looks at the other buttons, which keeps opening the
         // pause menu cheap.
         menu->setPosition(preferredPoint());
-        this->addChild(menu, 100);
+        layer->addChild(menu, 100);
         if (auto* placer = ButtonPlacer::create(menu)) {
-            this->addChild(placer);
+            layer->addChild(placer);
         }
 
         double const ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         if (ms >= 10.0) log::info("Minimum: pause button setup took {:.1f} ms", ms);
     }
 
-    void onMinimumButton(CCObject*) {
+    void openMinimumPopup() {
         if (auto* popup = MinimumPopup::create()) {
             popup->show();
         }
+    }
+
+}
+
+class $modify(MinimumPauseLayer, PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+        if (readCorner() == Corner::Hidden) return;
+        attachMinimumButton(this, this, menu_selector(MinimumPauseLayer::onMinimumButton));
+    }
+
+    void onMinimumButton(CCObject*) {
+        openMinimumPopup();
+    }
+};
+
+// The level editor has its own pause menu (EditorPauseLayer), with no PlayLayer behind it.
+// It gets the same button and the same popup. Every setting the popup changes is global, so
+// the frame hooks behave the same in the editor.
+class $modify(MinimumEditorPauseLayer, EditorPauseLayer) {
+    void customSetup() {
+        EditorPauseLayer::customSetup();
+        if (readCorner() == Corner::Hidden) return;
+        attachMinimumButton(this, this, menu_selector(MinimumEditorPauseLayer::onMinimumButton));
+    }
+
+    void onMinimumButton(CCObject*) {
+        openMinimumPopup();
     }
 };
