@@ -3,6 +3,7 @@
 * Fixed: the frame time graph in the popup was still drawn half a card to the left and down. A child node sits at its parent's lower left corner, and the old offset moved it by the anchor a second time. It now starts at the card's lower left corner.
 * Changed: the graph reaches the top at 2.5 frame budgets, never below 33 ms, so a 240 FPS target no longer turns every frame into a full bar.
 * Fixed: Low Latency Mode could stay paused for minutes in a level with frequent dips. Each trip doubled the pause up to 5 minutes, and a trip was only forgiven after 2 minutes of running, which a paused mode never does. The pause now tops out at 60 s, a trip is forgiven 60 s after the previous one even while paused, and a single slow window no longer counts.
+* Changed: the particle readout on Detailed line 3 splits the time into update (particle physics and quad building) and draw (the draw call), each as a percent of frame time over the last half second.
 * Changed: the guard starts and trips on a 2 s average, compared with the best 10 s, instead of one 0.5 s window against a fading peak.
 * New: while Low Latency Mode waits, the popup and the Detailed stats show how long it stays paused, as `sync paused N s`.
 * Changed: Low Latency Mode no longer makes the CPU wait for the whole GPU after every frame. It keeps at most two frames queued in the driver with GL sync objects, which costs far less FPS and adds no wait while the GPU has work queued. It still only runs while the game holds its frame rate.

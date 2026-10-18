@@ -618,6 +618,12 @@ namespace {
         CHECK(near(minimum::sparkBarFraction(-4.0, ceiling), 0.0));
         CHECK(near(minimum::sparkBarFraction(std::nan(""), ceiling), 0.0));
         CHECK(near(minimum::sparkBarFraction(10.0, 0.0), 0.0));
+
+        // Percent of a window: 50 ms of a 0.5 s window is 10 %, more than the window is 100 %.
+        CHECK(minimum::percentOfTime(0.05, 0.5) == 10);
+        CHECK(minimum::percentOfTime(0.9, 0.5) == 100);
+        CHECK(minimum::percentOfTime(std::nan(""), 0.5) == 0);
+        CHECK(minimum::percentOfTime(0.05, 0.0) == 0);
     }
 
 int main() {

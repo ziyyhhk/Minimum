@@ -36,7 +36,7 @@ Set Stats Detail to Detailed to see more lines under the FPS number:
 
 * Line 1: FPS, 1% low, frame time, CPU time, logic rate, spike count, the sync state, the bottleneck (`CPU bound` or `GPU bound`, from the last 60 frames) and the thermal state when it is hot.
 * Line 2: skips per second, capped draws per second, logic only frames per second, the current cap step and latency trips.
-* Line 3: running totals of frames drawn, logic only frames, idle skips, offscreen skips and capped particle pools, and `particles N% of cpu`: the share of the CPU work of the last half second that went to particle update and draw. Use it to see whether particles are worth tuning in a level at all. Logic only frames can add particle time without drawn work, so the number is approximate.
+* Line 3: running totals of frames drawn, logic only frames, idle skips, offscreen skips and capped particle pools, and `particles N% of frame time (update X%, draw Y%)`: the share of wall clock time over the last half second that the CPU spent in particle update (the particle physics and building the quads) and in particle draw (the draw call and its GL state). Use it to see whether particles are worth tuning in a level at all, and which half costs. Batching draws can only help when draw is the big number. Logic only frames can add particle time without drawn work, so the number is approximate.
 
 The live card in the popup draws the newest 120 frames as a faint graph behind the numbers: one bar per frame, colored by how far it ran over budget, with a line at the frame budget of your Target FPS.
 
