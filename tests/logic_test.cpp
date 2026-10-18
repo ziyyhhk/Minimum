@@ -231,30 +231,58 @@ namespace {
         minimum::LatencyGate gate;
         double t = 0.0;
 
-        // Steady 60 FPS: starts on the second steady window.
+        // Steady 60 FPS: starts once two windows (1 s) are in.
         bool on = false;
-        for (int i = 0; i < 4; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
+        for (int i = 0; i < 2; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
         CHECK(on);
 
-        // FPS falls clearly: switches off and stays off for 10 s even if FPS recovers.
+        // One slow window does not switch it off: the 2 s average is still above 85 % of 60.
+        on = gate.update(40.0, t, true); t += 0.5;
+        CHECK(on && gate.trips() == 0);
+
+        // A second slow window does: the average is 50 FPS, below 51.
+        double const firstTrip = t;
         on = gate.update(40.0, t, true); t += 0.5;
         CHECK(!on);
         CHECK(gate.trips() == 1);
-        for (int i = 0; i < 18; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
-        CHECK(!on);                       // 9 s later, still locked
-        for (int i = 0; i < 6; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
-        CHECK(on);                        // lock expired
+        CHECK(near(gate.lockRemainingSec(firstTrip), 10.0));
 
-        // Second trip locks for 20 s.
-        on = gate.update(30.0, t, true); t += 0.5;
-        CHECK(!on && gate.trips() == 2);
-        for (int i = 0; i < 38; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
+        // Locked for 10 s even though FPS is back up.
+        for (int i = 0; i < 18; ++i) { on = gate.update(60.0, t, true); t += 0.5; }   // 9 s
         CHECK(!on);
-        for (int i = 0; i < 6; ++i) { on = gate.update(60.0, t, true); t += 0.5; }
+        for (int i = 0; i < 2; ++i) { on = gate.update(60.0, t, true); t += 0.5; }    // 10 s
         CHECK(on);
 
-        // Not wanted: always off.
+        // Second trip locks for 20 s. The first slow window keeps the average at 52.5, above 51.
+        double const secondTrip = t;
+        on = gate.update(30.0, t, true); t += 0.5;
+        CHECK(on && gate.trips() == 1);
+        on = gate.update(30.0, t, true); t += 0.5;   // average 45
+        CHECK(!on && gate.trips() == 2);
+        CHECK(near(gate.lockRemainingSec(secondTrip + 0.5), 20.0));
+        for (int i = 0; i < 38; ++i) { on = gate.update(60.0, t, true); t += 0.5; }   // 19 s
+        CHECK(!on);
+        for (int i = 0; i < 2; ++i) { on = gate.update(60.0, t, true); t += 0.5; }    // 20 s
+        CHECK(on);
+
+        // Not wanted: always off, and no lock is kept for later.
         CHECK(!gate.update(60.0, t, false));
+        CHECK(near(gate.lockRemainingSec(t), 0.0));
+    }
+
+    // The reported case: a steady 96 FPS with a few percent of jitter from window to window. The
+    // guard must start on it and must not count the jitter as a drop.
+    void testLatencyJitter() {
+        minimum::LatencyGate gate;
+        double t = 0.0;
+        double const jitter[] = {96.0, 101.0, 92.0, 98.0, 94.0, 99.0, 93.0, 100.0};
+        bool on = false;
+        for (int i = 0; i < 40; ++i) {
+            on = gate.update(jitter[i % 8], t, true);
+            t += 0.5;
+        }
+        CHECK(on);
+        CHECK(gate.trips() == 0);
     }
 
     void testLatencyDecay() {
@@ -268,32 +296,80 @@ namespace {
 
         for (int i = 0; i < 4; ++i) step(60.0);
         CHECK(gate.active());
-        step(40.0);                                    // trip: one trip on record, locked
+        step(40.0);
+        step(40.0);                                    // two slow windows: trip, paused
+        double const tripAt = t - 0.5;
         CHECK(gate.trips() == 1);
         CHECK(!gate.active());
 
-        int locked = 0;
-        while (!gate.active() && locked < 200) {
+        int paused = 0;
+        while (!gate.active() && paused < 200) {
             step(60.0);
-            ++locked;
+            ++paused;
         }
-        CHECK(locked * 0.5 == 10.0);                   // the first backoff is still 10 s
+        CHECK(paused * 0.5 == 10.0);                   // the first pause is 10 s
 
-        for (int i = 0; i < 220; ++i) step(60.0);      // 110 s of Active, no trip
-        CHECK(gate.trips() == 1);
-        for (int i = 0; i < 20; ++i) step(60.0);       // 120 s of Active: forgiven
-        CHECK(gate.trips() == 0);
+        // The count comes down 60 s after the trip, even though the mode was paused for 10 s of it.
+        while (t < tripAt + 60.0) step(60.0);
+        CHECK(gate.trips() == 1);                      // 59.5 s after: not yet
+        step(60.0);
+        CHECK(gate.trips() == 0 && gate.active());     // 60 s after: forgiven
+
         for (int i = 0; i < 1000; ++i) step(60.0);     // never below zero
         CHECK(gate.trips() == 0 && gate.active());
 
+        step(40.0);
         step(40.0);                                    // a new trip is a first trip again
         CHECK(gate.trips() == 1 && !gate.active());
-        locked = 0;
-        while (!gate.active() && locked < 200) {
+        paused = 0;
+        while (!gate.active() && paused < 200) {
             step(60.0);
-            ++locked;
+            ++paused;
         }
-        CHECK(locked * 0.5 == 10.0);                   // 10 s, not 20 s
+        CHECK(paused * 0.5 == 10.0);                   // 10 s, not 20 s
+    }
+
+    // The ratchet the earlier guard had: a dip every few minutes must not keep escalating the
+    // pause, and repeated dips must never push it past kMaxLockSec.
+    void testLatencyRatchet() {
+        {
+            minimum::LatencyGate gate;
+            double t = 0.0;
+            auto step = [&](double fps) {
+                bool const on = gate.update(fps, t, true);
+                t += 0.5;
+                return on;
+            };
+            for (int i = 0; i < 4; ++i) step(60.0);
+            for (int cycle = 0; cycle < 5; ++cycle) {
+                double const dipAt = t;
+                step(40.0);
+                step(40.0);
+                CHECK(gate.trips() == 1);
+                CHECK(near(gate.lockRemainingSec(dipAt + 0.5), 10.0));
+                while (t < dipAt + 300.0) step(60.0);  // a dip every 5 minutes
+            }
+        }
+        {
+            minimum::LatencyGate gate;
+            double t = 0.0;
+            auto step = [&](double fps) {
+                bool const on = gate.update(fps, t, true);
+                t += 0.5;
+                return on;
+            };
+            for (int i = 0; i < 4; ++i) step(60.0);
+            double longest = 0.0;
+            for (int dip = 0; dip < 40; ++dip) {
+                double const dipAt = t;
+                step(40.0);
+                step(40.0);
+                longest = std::max(longest, gate.lockRemainingSec(dipAt + 0.5));
+                while (t < dipAt + 30.0) step(60.0);   // a dip every 30 seconds
+            }
+            CHECK(longest <= minimum::LatencyGate::kMaxLockSec + 1e-9);
+            CHECK(longest >= 20.0);
+        }
     }
 
     void testAdaptiveCap() {
@@ -526,15 +602,17 @@ namespace {
         // A broken target falls back to 60.
         CHECK(minimum::classifyFrameMs(16.0, 0.0) == FpsBand::Good);
 
-        // Ceiling: twice the budget, never below 8 ms.
-        CHECK(near(minimum::sparkCeilingMs(60.0), 2000.0 / 60.0));
-        CHECK(near(minimum::sparkCeilingMs(0.0), 2000.0 / 60.0));
-        CHECK(near(minimum::sparkCeilingMs(240.0), 2000.0 / 240.0));
-        CHECK(near(minimum::sparkCeilingMs(1000.0), 8.0));
+        // Ceiling: 2.5 budgets, never below 33 ms.
+        CHECK(near(minimum::sparkCeilingMs(60.0), 2500.0 / 60.0));
+        CHECK(near(minimum::sparkCeilingMs(0.0), 2500.0 / 60.0));
+        CHECK(near(minimum::sparkCeilingMs(240.0), 1000.0 / 30.0));
+        CHECK(near(minimum::sparkCeilingMs(1000.0), 1000.0 / 30.0));
 
-        // A frame on budget is half height at 60 FPS.
+        // A frame on budget is 40 % of the height at 60 FPS, and a 10.4 ms frame at a 240 target
+        // is not a full bar.
         double const ceiling = minimum::sparkCeilingMs(60.0);
-        CHECK(near(minimum::sparkBarFraction(1000.0 / 60.0, ceiling), 0.5f, 1e-4));
+        CHECK(near(minimum::sparkBarFraction(1000.0 / 60.0, ceiling), 0.4f, 1e-4));
+        CHECK(near(minimum::sparkBarFraction(10.4, minimum::sparkCeilingMs(240.0)), 10.4 / (1000.0 / 30.0), 1e-4));
         CHECK(near(minimum::sparkBarFraction(100.0, ceiling), 1.0));
         CHECK(near(minimum::sparkBarFraction(0.0, ceiling), 0.0));
         CHECK(near(minimum::sparkBarFraction(-4.0, ceiling), 0.0));
@@ -552,7 +630,9 @@ int main() {
     testPopupFit();
     testFindFreeSpot();
     testLatencyGate();
+    testLatencyJitter();
     testLatencyDecay();
+    testLatencyRatchet();
     testAdaptiveCap();
     testThermalGovernor();
     testCapSteps();

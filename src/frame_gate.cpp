@@ -124,10 +124,19 @@ namespace {
             char text[640];
             if (cfg.hudDetailed) {
                 char const* sync = "";
+                char syncPaused[40] = "";
                 if (cfg.lowLatency) {
                     switch (static_cast<minimum::LatencyState>(counters.latencyState.load(std::memory_order_relaxed))) {
                         case minimum::LatencyState::Active: sync = " | sync on"; break;
-                        case minimum::LatencyState::Waiting: sync = " | sync waiting"; break;
+                        case minimum::LatencyState::Waiting: {
+                            uint32_t const lock = counters.latencyLockSec.load(std::memory_order_relaxed);
+                            if (lock > 0) {
+                                std::snprintf(syncPaused, sizeof(syncPaused), " | sync paused %us", lock);
+                                sync = syncPaused;
+                            }
+                            else sync = " | sync waiting";
+                            break;
+                        }
                         case minimum::LatencyState::Unavailable: sync = " | sync n/a"; break;
                         default: break;
                     }
@@ -338,6 +347,9 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 // minimum::LatencyGate). It is not allowed to flip on and off every window.
                 bool const wantSync = cfg.enabled && cfg.lowLatency && focused && totalFrames >= 300;
                 s_syncOk = s_latencyGate.update(fps, nowSeconds, wantSync);
+                // Seconds left in the lock after a drop, shown on the popup and in the Detailed stats.
+                double const lockLeft = s_latencyGate.lockRemainingSec(nowSeconds);
+                counters.latencyLockSec.store(static_cast<uint32_t>(lockLeft > 0.0 ? lockLeft + 0.999 : 0.0));
 
                 // Per second numbers for the stats line: skipped draws (idle + off-screen), capped
                 // systems, logic-only frames. Running totals only ever grow, so the difference is the
