@@ -105,60 +105,75 @@ namespace minimum {
 
     // Decides when the frame queue bound of Low Latency Mode may run.
     //
-    // The sync lowers input latency but removes the overlap between CPU and GPU work, so on a
-    // GPU bound machine it costs frame rate. The guard switches it off when it sees the frame
-    // rate fall, and (this is the important part) it does NOT switch it straight back on:
-    // every time it has to back off, it stays off twice as long (10 s, 20 s, 40 s ... max 5 min).
+    // The bound lowers input latency but takes away some CPU and GPU overlap, so on a GPU bound
+    // machine it can cost a little frame rate. The guard only runs it while the game holds a
+    // steady frame rate, and pauses it when that rate falls.
     //
-    // A trip is forgiven one at a time: after kForgiveAfterSec of continuous Active without a
-    // new trip, the trip count goes down by one (never below zero), so the backoff for a player
-    // who had one bad level does not stay at 5 minutes for the rest of the session.
+    // It is fed one measurement per window of about 0.5 s. The rate it judges is the average of
+    // the last kSmoothWindows windows (2 s), so one slow window does not count on its own. The
+    // reference is the best such average of the last kRefWindows windows (10 s). It starts when the
+    // average is within kStartShare of the reference, and it trips when the average falls below
+    // kTripShare of the reference or below kMinFps.
     //
-    // The previous version re-enabled the sync one measurement later. The sync made the FPS
-    // drop, the guard turned it off, the FPS recovered, the guard turned it on again, and so on,
-    // so the frame rate alternated every half second.
+    // A trip pauses the mode for 10 s, then 20 s, 40 s, up to kMaxLockSec. Each trip adds one to
+    // the trip count. A trip is forgiven kForgiveAfterSec after the previous one, whether the mode
+    // was running or paused in between. The earlier version only forgave while running, but the
+    // mode cannot run during a pause, so a stutter every half minute kept the pause at 5 minutes.
     //
     // Call update() once per measurement window (about every 0.5 s).
     class LatencyGate {
     public:
-        static constexpr double kForgiveAfterSec = 120.0;
-        static constexpr double kMaxLockSec = 300.0;
+        static constexpr double kForgiveAfterSec = 60.0;
+        static constexpr double kMaxLockSec = 60.0;
+        static constexpr double kMinFps = 30.0;
+        static constexpr double kStartShare = 0.92;
+        static constexpr double kTripShare = 0.85;
+        static constexpr size_t kSmoothWindows = 4;   // 2 s
+        static constexpr size_t kRefWindows = 20;     // 10 s
+        static constexpr size_t kStartWindows = 2;    // windows needed before the first start
 
         // fps    : frames drawn per second in the window that just ended.
         // now    : seconds on any monotonic clock.
         // wanted : the user wants the sync and the game is in a state where it may run.
         bool update(double fps, double now, bool wanted) {
-            // Recent best frame rate, decays about 3 % per window so it follows the level.
-            m_peak = std::max(fps, m_peak * 0.97);
-            double const dt = m_hasLast ? std::max(0.0, now - m_lastNow) : 0.0;
-            m_hasLast = true;
-            m_lastNow = now;
+            m_recent[m_recentNext] = fps;
+            m_recentNext = (m_recentNext + 1) % kSmoothWindows;
+            m_recentCount = std::min(m_recentCount + 1, kSmoothWindows);
+
+            double sum = 0.0;
+            for (size_t i = 0; i < m_recentCount; ++i) sum += m_recent[i];
+            double const smooth = sum / static_cast<double>(m_recentCount);
+
+            m_smoothed[m_smoothedNext] = smooth;
+            m_smoothedNext = (m_smoothedNext + 1) % kRefWindows;
+            m_smoothedCount = std::min(m_smoothedCount + 1, kRefWindows);
+
+            double reference = 0.0;
+            for (size_t i = 0; i < m_smoothedCount; ++i) reference = std::max(reference, m_smoothed[i]);
+
+            if (m_trips > 0 && now - m_lastTripAt >= kForgiveAfterSec) {
+                --m_trips;
+                m_lastTripAt = now;
+            }
 
             if (!wanted || now < m_lockedUntil) {
                 m_on = false;
-                m_activeFor = 0.0;
                 return false;
             }
 
             if (m_on) {
-                m_activeFor += dt;
-                if (m_activeFor >= kForgiveAfterSec) {
-                    if (m_trips > 0) --m_trips;
-                    m_activeFor = 0.0;
-                }
-                // The sync is running and the frame rate fell clearly below the recent best.
-                if (fps < 30.0 || fps < 0.85 * m_peak) {
+                // The sync is running and the steady rate fell clearly below the reference.
+                if (smooth < kMinFps || smooth < kTripShare * reference) {
                     m_on = false;
                     ++m_trips;
-                    m_activeFor = 0.0;
+                    m_lastTripAt = now;
                     double const lock = std::min(kMaxLockSec, 10.0 * std::pow(2.0, m_trips - 1));
                     m_lockedUntil = now + lock;
                 }
             }
-            else if (fps >= 30.0 && fps >= 0.97 * m_peak) {
+            else if (m_smoothedCount >= kStartWindows && smooth >= kMinFps && smooth >= kStartShare * reference) {
                 // Only start while the game is holding a steady frame rate.
                 m_on = true;
-                m_activeFor = 0.0;
             }
             return m_on;
         }
@@ -166,14 +181,20 @@ namespace minimum {
         bool active() const { return m_on; }
         int trips() const { return m_trips; }
 
+        // Seconds left in the current pause at time `now`, 0 when not paused.
+        double lockRemainingSec(double now) const { return std::max(0.0, m_lockedUntil - now); }
+
     private:
-        double m_peak = 0.0;
+        std::array<double, kSmoothWindows> m_recent{};
+        size_t m_recentNext = 0;
+        size_t m_recentCount = 0;
+        std::array<double, kRefWindows> m_smoothed{};
+        size_t m_smoothedNext = 0;
+        size_t m_smoothedCount = 0;
         double m_lockedUntil = 0.0;
-        double m_lastNow = 0.0;
-        double m_activeFor = 0.0;
+        double m_lastTripAt = 0.0;
         int m_trips = 0;
         bool m_on = false;
-        bool m_hasLast = false;
     };
 
     // ---------------------------------------------------------------------------------------
@@ -265,12 +286,13 @@ namespace minimum {
         return FpsBand::Bad;
     }
 
-    // The frame time that reaches the top of the frame-time graph: twice the frame budget, and
-    // never less than 8 ms, so on a 240 FPS target the graph does not become a sliver.
-    // A frame on budget therefore sits at half height.
+    // The frame time that reaches the top of the frame-time graph: 2.5 frame budgets, and never
+    // less than 33 ms (30 FPS). The floor keeps a high target from turning every ordinary frame
+    // into a full red bar, and the budget rule keeps a low target readable. A frame on budget
+    // sits at 40 percent of the height at 60 FPS.
     inline double sparkCeilingMs(double targetFps) {
         if (targetFps <= 0.0) targetFps = 60.0;
-        return std::max(8.0, 2000.0 / targetFps);
+        return std::max(1000.0 / 30.0, 2.5 * (1000.0 / targetFps));
     }
 
     // Bar height as a 0..1 fraction of the graph. NaN, negative times and a broken ceiling give 0.

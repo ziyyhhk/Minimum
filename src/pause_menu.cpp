@@ -394,9 +394,9 @@ protected:
             m_liveCard = panel;
             m_spark = CCDrawNode::create();
             if (m_spark) {
-                // The graph's origin is the panel's lower left corner, whatever the panel's anchor is.
-                CCPoint const anchor = panel->getAnchorPoint();
-                m_spark->setPosition({-anchor.x * m_plan.live.w, -anchor.y * m_plan.live.h});
+                // A child node sits at its parent's lower left corner whatever the parent's anchor
+                // point is, so the graph starts at (0, 0). An offset by the anchor moved the graph by
+                // half a card to the left and down, which drew it outside the card.
                 panel->addChild(m_spark, 1);
             }
             auto* card = CCMenuItemSpriteExtra::create(panel, this, menu_selector(MinimumPopup::onLiveTap));
@@ -540,11 +540,21 @@ protected:
 
         // Second line: frame time, whether Low Latency Mode is really running right now, and what
         // limits the frame (CPU or GPU). While a benchmark records, its countdown replaces it.
+        char syncPaused[48] = "";
         char const* sync = "";
         if (cfg.enabled && cfg.lowLatency) {
             switch (static_cast<minimum::LatencyState>(counters.latencyState.load(std::memory_order_relaxed))) {
                 case minimum::LatencyState::Active: sync = "  |  sync on"; break;
-                case minimum::LatencyState::Waiting: sync = "  |  sync waiting"; break;
+                case minimum::LatencyState::Waiting: {
+                    // While the guard is locked after a drop, say how long it stays paused.
+                    uint32_t const lock = counters.latencyLockSec.load(std::memory_order_relaxed);
+                    if (lock > 0) {
+                        std::snprintf(syncPaused, sizeof(syncPaused), "  |  sync paused %us", lock);
+                        sync = syncPaused;
+                    }
+                    else sync = "  |  sync waiting";
+                    break;
+                }
                 case minimum::LatencyState::Unavailable: sync = "  |  sync n/a"; break;
                 default: break;
             }

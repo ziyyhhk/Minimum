@@ -117,6 +117,7 @@ namespace minimum {
         std::atomic<uint32_t> capStep{0};          // combined adaptive + thermal step, 0..3
         std::atomic<uint32_t> thermalStep{0};      // thermal part of capStep, 0 = not hot
         std::atomic<uint32_t> latencyTrips{0};     // trips on record in the low latency guard
+        std::atomic<uint32_t> latencyLockSec{0};   // whole seconds left in that guard's lock, 0 when not locked
         // Bottleneck::None / CpuBound / GpuBound from minimum_logic.hpp, stored as a number.
         std::atomic<uint8_t> bottleneck{0};
 
