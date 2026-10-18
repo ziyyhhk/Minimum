@@ -255,6 +255,30 @@ namespace minimum {
         return FpsBand::Bad;
     }
 
+    // Band of ONE drawn frame against the frame budget (1000 / target FPS): Good within 5% over
+    // the budget, Okay up to 50% over it, Bad beyond that. Used to color the frame-time graph.
+    inline FpsBand classifyFrameMs(double frameMs, double targetFps) {
+        if (targetFps <= 0.0) targetFps = 60.0;
+        double const budget = 1000.0 / targetFps;
+        if (frameMs <= budget * 1.05) return FpsBand::Good;
+        if (frameMs <= budget * 1.5) return FpsBand::Okay;
+        return FpsBand::Bad;
+    }
+
+    // The frame time that reaches the top of the frame-time graph: twice the frame budget, and
+    // never less than 8 ms, so on a 240 FPS target the graph does not become a sliver.
+    // A frame on budget therefore sits at half height.
+    inline double sparkCeilingMs(double targetFps) {
+        if (targetFps <= 0.0) targetFps = 60.0;
+        return std::max(8.0, 2000.0 / targetFps);
+    }
+
+    // Bar height as a 0..1 fraction of the graph. NaN, negative times and a broken ceiling give 0.
+    inline float sparkBarFraction(double frameMs, double ceilingMs) {
+        if (!(ceilingMs > 0.0) || !(frameMs > 0.0)) return 0.f;
+        return static_cast<float>(std::min(1.0, frameMs / ceilingMs));
+    }
+
     // The game can run its logic (scheduler updates) at a different rate than it draws frames,
     // for example 240 updates per second with 60 frames drawn. Other FPS counters often show
     // the update rate, so when the two are clearly apart the counter shows both.

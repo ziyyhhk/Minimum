@@ -515,9 +515,37 @@ namespace {
 
 }
 
+    void testFrameGraph() {
+        using minimum::FpsBand;
+        // 60 FPS budget is 16.67 ms: up to 17.5 ms is Good, up to 25 ms is Okay.
+        CHECK(minimum::classifyFrameMs(16.0, 60.0) == FpsBand::Good);
+        CHECK(minimum::classifyFrameMs(17.5, 60.0) == FpsBand::Good);
+        CHECK(minimum::classifyFrameMs(20.0, 60.0) == FpsBand::Okay);
+        CHECK(minimum::classifyFrameMs(25.0, 60.0) == FpsBand::Okay);
+        CHECK(minimum::classifyFrameMs(40.0, 60.0) == FpsBand::Bad);
+        // A broken target falls back to 60.
+        CHECK(minimum::classifyFrameMs(16.0, 0.0) == FpsBand::Good);
+
+        // Ceiling: twice the budget, never below 8 ms.
+        CHECK(near(minimum::sparkCeilingMs(60.0), 2000.0 / 60.0));
+        CHECK(near(minimum::sparkCeilingMs(0.0), 2000.0 / 60.0));
+        CHECK(near(minimum::sparkCeilingMs(240.0), 2000.0 / 240.0));
+        CHECK(near(minimum::sparkCeilingMs(1000.0), 8.0));
+
+        // A frame on budget is half height at 60 FPS.
+        double const ceiling = minimum::sparkCeilingMs(60.0);
+        CHECK(near(minimum::sparkBarFraction(1000.0 / 60.0, ceiling), 0.5f, 1e-4));
+        CHECK(near(minimum::sparkBarFraction(100.0, ceiling), 1.0));
+        CHECK(near(minimum::sparkBarFraction(0.0, ceiling), 0.0));
+        CHECK(near(minimum::sparkBarFraction(-4.0, ceiling), 0.0));
+        CHECK(near(minimum::sparkBarFraction(std::nan(""), ceiling), 0.0));
+        CHECK(near(minimum::sparkBarFraction(10.0, 0.0), 0.0));
+    }
+
 int main() {
     testFrameStats();
     testBands();
+    testFrameGraph();
     testLogicRate();
     testPresets();
     testPopupPlan();

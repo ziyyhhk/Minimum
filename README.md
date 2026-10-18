@@ -38,6 +38,8 @@ Set Stats Detail to Detailed to see more lines under the FPS number:
 - Line 2: skips per second, capped draws per second, logic-only frames per second, the current cap step and latency trips.
 - Line 3: running totals of frames drawn, logic-only frames, idle skips, off-screen skips and capped particle pools, and `particles N% of cpu`: the share of the CPU work of the last half second that went to particle update and draw. Use it to see whether particles are worth tuning in a level at all. Logic-only frames can add particle time without drawn work, so the number is approximate.
 
+The live card in the popup draws the newest 120 frames as a faint graph behind the numbers: one bar per frame, colored by how far it ran over budget, with a line at the frame budget of your Target FPS.
+
 Benchmark: open the Minimum popup and tap the live FPS card five times quickly. Minimum records 60 seconds of frame times and saves them as `benchmark-<unix time>.csv` in the mod's save folder, with the columns `elapsed_s,frame_ms,cpu_ms`. The popup shows the time left while it records. Tap the card again to stop early and save what has been recorded.
 
 ## What to expect
