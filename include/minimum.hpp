@@ -119,6 +119,14 @@ namespace minimum {
         std::atomic<uint32_t> latencyTrips{0};     // trips on record in the low latency guard
         // Bottleneck::None / CpuBound / GpuBound from minimum_logic.hpp, stored as a number.
         std::atomic<uint8_t> bottleneck{0};
+
+        // Particle work, only measured while the detailed stats line is on. Running totals in
+        // nanoseconds, so the frame hook can take the difference per window.
+        std::atomic<uint64_t> particleUpdateNs{0};
+        std::atomic<uint64_t> particleDrawNs{0};
+        // Particle update + draw as a share of the CPU work of the frames in the last half
+        // second, 0..100. Approximate: logic-only frames add particle time without drawn work.
+        std::atomic<uint32_t> particleShare{0};
     };
 
     // Off: the setting is off. Waiting: on, but not syncing right now (loading, or it backed

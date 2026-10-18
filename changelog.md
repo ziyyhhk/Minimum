@@ -1,5 +1,7 @@
 # v3.2.2
 
+- New: level editor support. The Minimum button is in the corner of the editor's pause menu too, and it opens the same popup. The frame hooks already run in the editor, so the particle, FPS and stats features work there as well.
+- New: *particles % of cpu* on the Detailed stats line 3. It shows how much of the CPU work of the last half second went to particle update and draw. If it is low, particles are not what limits your frame rate in that level.
 - New: off-screen particle culling. A particle effect that is fully off screen, with a margin for how far its particles can travel, is not drawn. It still updates, so it looks the same when it comes back. Only effects that use relative position mode are culled. Setting: *Cull Off-Screen Particles* (on by default).
 - New: spawn budget. Limits how many particles a level may hold while it runs. 0 (the default) means no limit. Setting: *Spawn Budget*, 0 to 500.
 - New: thermal response on Android. When the phone reports a severe or hotter state, the particle cap is lowered at once, and it goes back up after 30 s at a normal temperature. Works together with *Adaptive Particle Cap*.

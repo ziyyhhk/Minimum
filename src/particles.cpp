@@ -1,6 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCParticleSystemQuad.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <minimum.hpp>
 #include <minimum_logic.hpp>
@@ -179,6 +180,23 @@ struct ParticleOpt : Modify<ParticleOpt, CCParticleSystemQuad> {
         CCParticleSystemQuad::setTotalParticles(limitedPool(total, createdEarlierThisFrame()));
     }
 
+    // Particle update runs from the scheduler, once per game logic step. It is timed only while
+    // the detailed stats line is shown, so the hook costs one config read otherwise.
+    void update(float dt) {
+        auto const& cfg = minimum::config();
+        if (!cfg.enabled || !cfg.showStats || !cfg.hudDetailed) {
+            CCParticleSystemQuad::update(dt);
+            return;
+        }
+        auto const started = std::chrono::steady_clock::now();
+        CCParticleSystemQuad::update(dt);
+        auto const spent = std::chrono::steady_clock::now() - started;
+        minimum::counters().particleUpdateNs.fetch_add(
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(spent).count()),
+            std::memory_order_relaxed
+        );
+    }
+
     void draw() {
         auto const& cfg = minimum::config();
         if (cfg.enabled && cfg.skipIdleParticles && m_uParticleCount == 0) {
@@ -189,6 +207,16 @@ struct ParticleOpt : Modify<ParticleOpt, CCParticleSystemQuad> {
             ++minimum::counters().offscreenParticleDrawsSkipped;
             return;
         }
+        if (!cfg.showStats || !cfg.hudDetailed) {
+            CCParticleSystemQuad::draw();
+            return;
+        }
+        auto const started = std::chrono::steady_clock::now();
         CCParticleSystemQuad::draw();
+        auto const spent = std::chrono::steady_clock::now() - started;
+        minimum::counters().particleDrawNs.fetch_add(
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(spent).count()),
+            std::memory_order_relaxed
+        );
     }
 };
