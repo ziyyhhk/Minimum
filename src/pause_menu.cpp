@@ -274,6 +274,10 @@ protected:
     CCLabelBMFont* m_fpsLabel = nullptr;
     CCLabelBMFont* m_lowLabel = nullptr;
     CCLabelBMFont* m_frameLabel = nullptr;
+    // The live card's panel, and the frame-time graph drawn on top of it (see drawSpark).
+    CCScale9Sprite* m_liveCard = nullptr;
+    CCDrawNode* m_spark = nullptr;
+    static constexpr size_t kSparkBars = 120; // the newest 120 drawn frames, about 2 s at 60 FPS
     std::string m_lastFps;
     std::string m_lastLow;
     std::string m_lastFrame;
@@ -380,6 +384,15 @@ protected:
         auto const c = centerOf(m_plan.live);
         // The card is a button in disguise: five quick taps on it start the hidden benchmark.
         if (auto* panel = makePanel(m_plan.live.w, m_plan.live.h, kLiveOpacity)) {
+            // The frame-time graph is a child of the card's own panel, so it moves and presses
+            // with the card and sits behind the numbers, which are drawn by the menu after it.
+            m_liveCard = panel;
+            m_spark = CCDrawNode::create();
+            if (m_spark) {
+                // The panel's anchor is its center, so this is its lower left corner.
+                m_spark->setPosition({-m_plan.live.w / 2.f, -m_plan.live.h / 2.f});
+                panel->addChild(m_spark, 1);
+            }
             auto* card = CCMenuItemSpriteExtra::create(panel, this, menu_selector(MinimumPopup::onLiveTap));
             m_buttonMenu->addChildAtPosition(card, Anchor::Center, c);
         }
@@ -552,6 +565,69 @@ protected:
             m_frameLabel->setString(buffer);
             // Keep the line inside the card, to the right of the FPS number.
             fitLabel(m_frameLabel, .8f, m_plan.live.w - 104.f);
+        }
+
+        this->tintLiveCard(fps, cfg.targetFps, recording > 0.0);
+        this->drawSpark();
+    }
+
+    // The card takes a faint tint of its band, or blue while the benchmark records, so the state
+    // reads at a glance.
+    void tintLiveCard(uint32_t fps, double targetFps, bool recording) {
+        if (!m_liveCard) return;
+        ccColor3B tint = ccc3(255, 255, 255);
+        if (recording) {
+            tint = ccc3(205, 225, 255);
+        }
+        else if (fps > 0) {
+            switch (minimum::classifyFps(fps, targetFps)) {
+                case minimum::FpsBand::Good: tint = ccc3(222, 255, 222); break;
+                case minimum::FpsBand::Okay: tint = ccc3(255, 242, 206); break;
+                case minimum::FpsBand::Bad: tint = ccc3(255, 214, 214); break;
+            }
+        }
+        m_liveCard->setColor(tint);
+    }
+
+    static ccColor4F bandColor(minimum::FpsBand band) {
+        switch (band) {
+            case minimum::FpsBand::Good: return ccColor4F{0.47f, 1.f, 0.47f, 0.38f};
+            case minimum::FpsBand::Okay: return ccColor4F{1.f, 0.88f, 0.35f, 0.38f};
+            case minimum::FpsBand::Bad: return ccColor4F{1.f, 0.39f, 0.39f, 0.38f};
+        }
+        return ccColor4F{1.f, 1.f, 1.f, 0.38f};
+    }
+
+    // Frame-time graph: the newest drawn frames, one bar each, right-aligned, each in the band of
+    // its own frame. A faint rule marks the frame budget of the target FPS. Its height is the
+    // ceiling from minimum::sparkCeilingMs.
+    void drawSpark() {
+        if (!m_spark || !m_liveCard) return;
+        auto const& cfg = minimum::config();
+        auto const& stats = minimum::frameStats();
+        float const w = m_plan.live.w;
+        float const h = m_plan.live.h;
+
+        m_spark->clear();
+        size_t const n = stats.size();
+        if (n == 0) return;
+
+        double const ceiling = minimum::sparkCeilingMs(cfg.targetFps);
+        double const budgetMs = 1000.0 / (cfg.targetFps > 0.0 ? cfg.targetFps : 60.0);
+        float const maxHeight = h * 0.86f;
+        size_t const count = std::min<size_t>(n, kSparkBars);
+        float const slot = w / static_cast<float>(kSparkBars);
+        float const radius = std::max(0.5f, slot * 0.32f);
+
+        float const budgetY = minimum::sparkBarFraction(budgetMs, ceiling) * maxHeight;
+        m_spark->drawSegment({0.f, budgetY}, {w, budgetY}, 0.5f, ccColor4F{1.f, 1.f, 1.f, 0.22f});
+
+        for (size_t k = 0; k < count; ++k) {
+            double const ms = stats.frameMsAt(n - count + k);
+            float const x = w - slot * static_cast<float>(count - k) + slot / 2.f;
+            float const top = std::max(1.f, minimum::sparkBarFraction(ms, ceiling) * maxHeight);
+            auto const band = minimum::classifyFrameMs(ms, cfg.targetFps);
+            m_spark->drawSegment({x, 0.f}, {x, top}, radius, bandColor(band));
         }
     }
 
