@@ -10,7 +10,7 @@
 	"name": "Minimum",
 	"version": "v3.2.2",
 	"developer": "ziyyhhk",
-	"description": "Makes Geometry Dash run smoother. It skips drawing idle particles, limits how many particles a level can spawn, and adds a small menu to the pause screen with a live FPS counter and a few quick toggles. There are also options for lower input lag, plus extra tweaks on Windows. Works on PC, Mac, Android and iOS. Only changes how things are drawn, never the gameplay.",
+	"description": "Helps Geometry Dash run smoother on weaker hardware, mostly in particle heavy levels. It skips drawing particles that are not doing anything, can cap how many a level spawns, and adds a button to the pause menu and the level editor with a live frame time card and a few quick toggles. There is also a lower latency option, a frame rate unlock on phones and a precise frame limiter on PC. It changes how the game is drawn, never how it plays. Works on Windows, macOS, Android and iOS.",
 	"tags": [
 		"performance",
 		"utility"
@@ -39,7 +39,7 @@
 		},
 		"preset": {
 			"name": "Preset",
-			"description": "Quick profile for particles and the background frame rate. Balanced: 256 particles. Performance: 128. Extreme: 48. Super Performance: 16 particles, Low Detail Mode on and the lowest background frame rate, the plainest look and the fastest. Custom uses the settings below. Re-enter the level after changing it.",
+			"description": "Quick profile for particles and the background frame rate. Balanced: 256 particles. Performance: 128. Extreme: 48. Super Performance: 16 particles, Low Detail Mode on and the lowest background frame rate, the plainest look and the fastest. Custom uses the settings below. Enter the level again after changing it.",
 			"type": "string",
 			"default": "Custom",
 			"one-of": [
@@ -119,7 +119,7 @@
 		},
 		"cap-particles": {
 			"name": "Cap Particle Pool Size",
-			"description": "Limits how many particles a single system can hold. Only affects systems created after the change, so re-enter the level. Lower cap means more FPS in heavy levels and thinner effects.",
+			"description": "Limits how many particles a single system can hold. Only affects systems created after the change, so enter the level again. Lower cap means more FPS in heavy levels and thinner effects.",
 			"type": "bool",
 			"default": true
 		},
@@ -140,7 +140,7 @@
 			"enable-if": "cap-particles"
 		},
 		"cull-offscreen-particles": {
-			"name": "Skip Off-Screen Particles",
+			"name": "Skip Offscreen Particles",
 			"description": "Does not draw particle systems that are far outside the screen. They are still updated, so effects stay in sync and look the same when they come back on screen. Visual only.",
 			"type": "bool",
 			"default": true,
@@ -319,7 +319,7 @@
 		},
 		"draw-divide": {
 			"name": "Draw Divide",
-			"description": "OFF by default. Draws at Visual FPS while game logic keeps running at the full frame rate. Only useful if your FPS is higher than your screen refresh rate (FPS bypass / uncapped). Do NOT use together with the mat.draw-divide mod.",
+			"description": "OFF by default. Draws at Visual FPS while game logic keeps running at the full frame rate. Only useful if your FPS is higher than your screen refresh rate (FPS bypass / uncapped). Do not use it together with the Draw Divide mod by mat.",
 			"type": "bool",
 			"default": false,
 			"platforms": [
@@ -401,7 +401,7 @@
 		},
 		"hud-opacity": {
 			"name": "Stats Opacity",
-			"description": "0-255. Lower is more transparent.",
+			"description": "0 to 255. Lower is more transparent.",
 			"type": "int",
 			"min": 20,
 			"max": 255,
@@ -432,7 +432,7 @@
 		},
 		"fast-alt-tab": {
 			"name": "Fast Alt Tab",
-			"description": "Skips the game save that happens when the window loses focus, so alt-tab does not stutter. Saving on level exit and on closing the game is untouched. Not available on Android and iOS on purpose: the OS can close the app right after it goes to the background.",
+			"description": "Skips the game save that happens when the window loses focus, so alt tab does not stutter. Saving on level exit and on closing the game is untouched. Not available on Android and iOS on purpose: the OS can close the app right after it goes to the background.",
 			"type": "bool",
 			"default": true,
 			"platforms": [

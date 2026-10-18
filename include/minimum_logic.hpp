@@ -313,8 +313,8 @@ namespace minimum {
 
     inline char const* bottleneckLabel(Bottleneck b) {
         switch (b) {
-            case Bottleneck::CpuBound: return "CPU-bound";
-            case Bottleneck::GpuBound: return "GPU-bound";
+            case Bottleneck::CpuBound: return "CPU bound";
+            case Bottleneck::GpuBound: return "GPU bound";
             default: return "";
         }
     }

@@ -278,6 +278,9 @@ protected:
     CCScale9Sprite* m_liveCard = nullptr;
     CCDrawNode* m_spark = nullptr;
     static constexpr size_t kSparkBars = 120; // the newest 120 drawn frames, about 2 s at 60 FPS
+    // Easter egg state (see onLogoTap).
+    int m_logoTaps = 0;
+    double m_logoTapStart = 0.0;
     std::string m_lastFps;
     std::string m_lastLow;
     std::string m_lastFrame;
@@ -341,7 +344,9 @@ protected:
         this->setTitle("Minimum");
 
         // Logo, top right, level with the title (the close button lives in the top left).
-        m_mainLayer->addChildAtPosition(makeLogo(28.f), Anchor::TopRight, ccp(-26.f, -22.f));
+        // The logo is a button too: seven quick taps on it is a small secret (see onLogoTap).
+        auto* logo = CCMenuItemSpriteExtra::create(makeLogo(28.f), this, menu_selector(MinimumPopup::onLogoTap));
+        m_buttonMenu->addChildAtPosition(logo, Anchor::TopRight, ccp(-26.f, -22.f));
 
         // On a screen shorter than the popup the whole popup is scaled down by the fit scale, so
         // it fits (see planPopup). The scale is on the popup's own layer, which is centered.
@@ -398,7 +403,7 @@ protected:
         }
 
         float const left = c.x - m_plan.live.w / 2.f;
-        m_fpsLabel = CCLabelBMFont::create("--", "bigFont.fnt");
+        m_fpsLabel = CCLabelBMFont::create("...", "bigFont.fnt");
         m_fpsLabel->setScale(.85f);
         m_buttonMenu->addChildAtPosition(m_fpsLabel, Anchor::Center, ccp(left + 62.f, c.y + 5.f));
 
@@ -407,11 +412,11 @@ protected:
         m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(left + 62.f, c.y - m_plan.live.h / 2.f + 11.f));
 
         float const right = c.x + m_plan.live.w / 2.f;
-        m_lowLabel = CCLabelBMFont::create("1% low --", "chatFont.fnt");
+        m_lowLabel = CCLabelBMFont::create("1% low ...", "chatFont.fnt");
         m_lowLabel->setScale(.8f);
         m_buttonMenu->addChildAtPosition(m_lowLabel, Anchor::Center, ccp(right - 14.f, c.y + 8.f), ccp(1.f, .5f));
 
-        m_frameLabel = CCLabelBMFont::create("frame -- ms", "chatFont.fnt");
+        m_frameLabel = CCLabelBMFont::create("frame ... ms", "chatFont.fnt");
         m_frameLabel->setScale(.8f);
         m_frameLabel->setOpacity(190);
         m_buttonMenu->addChildAtPosition(m_frameLabel, Anchor::Center, ccp(right - 14.f, c.y - 8.f), ccp(1.f, .5f));
@@ -505,7 +510,7 @@ protected:
         uint32_t const fps = counters.fps.load();
         char buffer[96];
 
-        if (fps == 0) std::snprintf(buffer, sizeof(buffer), "--");
+        if (fps == 0) std::snprintf(buffer, sizeof(buffer), "...");
         else std::snprintf(buffer, sizeof(buffer), "%u", fps);
         if (m_lastFps != buffer) {
             m_lastFps = buffer;
@@ -526,7 +531,7 @@ protected:
 
         double const low = stats.lowFps(240);
         if (low > 0.5) std::snprintf(buffer, sizeof(buffer), "1%% low %u", static_cast<uint32_t>(low + 0.5));
-        else std::snprintf(buffer, sizeof(buffer), "1%% low --");
+        else std::snprintf(buffer, sizeof(buffer), "1%% low ...");
         if (m_lastLow != buffer) {
             m_lastLow = buffer;
             m_lowLabel->setString(buffer);
@@ -559,7 +564,7 @@ protected:
         if (!cfg.enabled) std::snprintf(buffer, sizeof(buffer), "Minimum is off");
         else if (recording > 0.0) std::snprintf(buffer, sizeof(buffer), "benchmark: %.0f s left", std::ceil(recording));
         else if (frameMs > 0.05) std::snprintf(buffer, sizeof(buffer), "frame %.1f ms%s%s%s", frameMs, logic, sync, limit);
-        else std::snprintf(buffer, sizeof(buffer), "frame -- ms%s%s%s", logic, sync, limit);
+        else std::snprintf(buffer, sizeof(buffer), "frame ... ms%s%s%s", logic, sync, limit);
         if (m_lastFrame != buffer) {
             m_lastFrame = buffer;
             m_frameLabel->setString(buffer);
@@ -687,6 +692,22 @@ protected:
     void onAllSettings(CCObject*) {
         this->onClose(nullptr);
         openSettingsPopup(Mod::get(), true);
+    }
+
+    // Easter egg: seven taps on the logo within four seconds spin it once and show a short line.
+    void onLogoTap(CCObject* sender) {
+        double const now = steadySeconds();
+        if (now - m_logoTapStart > 4.0) {
+            m_logoTaps = 0;
+            m_logoTapStart = now;
+        }
+        if (++m_logoTaps < 7) return;
+        m_logoTaps = 0;
+
+        if (auto* logo = static_cast<CCNode*>(sender)) {
+            logo->runAction(CCRotateBy::create(0.9f, 360.f));
+        }
+        Notification::create("Secret found. The logo is spinning for you.", NotificationIcon::Success, 2.f)->show();
     }
 
     // Hidden benchmark: each tap on the live card counts; five quick taps start the recording.

@@ -162,7 +162,7 @@ namespace {
                 char second[160];
                 std::snprintf(
                     second, sizeof(second),
-                    "skips %u/s | capped %u/s | logic-only %u/s | cap step %u | trips %u",
+                    "skips %u/s | capped %u/s | logic only %u/s | cap step %u | trips %u",
                     counters.skipsPerSec.load(), counters.cappedPerSec.load(), counters.logicOnlyPerSec.load(),
                     counters.capStep.load(), counters.latencyTrips.load()
                 );
@@ -171,7 +171,7 @@ namespace {
                 char third[256];
                 std::snprintf(
                     third, sizeof(third),
-                    "drawn %llu | logic-only %llu | idle skips %llu | off-screen skips %llu | pools capped %llu | particles %u%% of cpu",
+                    "drawn %llu | logic only %llu | idle skips %llu | offscreen skips %llu | pools capped %llu | particles %u%% of cpu",
                     static_cast<unsigned long long>(counters.framesDrawn.load()),
                     static_cast<unsigned long long>(counters.framesLogicOnly.load()),
                     static_cast<unsigned long long>(counters.idleParticleDrawsSkipped.load()),
