@@ -394,8 +394,9 @@ protected:
             m_liveCard = panel;
             m_spark = CCDrawNode::create();
             if (m_spark) {
-                // The panel's anchor is its center, so this is its lower left corner.
-                m_spark->setPosition({-m_plan.live.w / 2.f, -m_plan.live.h / 2.f});
+                // The graph's origin is the panel's lower left corner, whatever the panel's anchor is.
+                CCPoint const anchor = panel->getAnchorPoint();
+                m_spark->setPosition({-anchor.x * m_plan.live.w, -anchor.y * m_plan.live.h});
                 panel->addChild(m_spark, 1);
             }
             auto* card = CCMenuItemSpriteExtra::create(panel, this, menu_selector(MinimumPopup::onLiveTap));

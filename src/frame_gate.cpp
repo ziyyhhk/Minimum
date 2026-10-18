@@ -67,6 +67,7 @@ namespace {
         std::string m_lastText;
         bool m_aligned = false;
         bool m_alignedRight = false;
+        int m_ticks = 0;
 
         bool init() override {
             if (!CCNode::init()) return false;
@@ -202,6 +203,10 @@ namespace {
                 case minimum::FpsBand::Okay: m_label->setColor(ccc3(255, 225, 90)); break;
                 case minimum::FpsBand::Bad: m_label->setColor(ccc3(255, 100, 100)); break;
             }
+
+            // setString rebuilds every glyph, and the detailed text is long. In detailed mode it is
+            // refreshed once a second instead of twice.
+            if (cfg.hudDetailed && (++m_ticks % 2) != 0) return;
 
             // setString rebuilds the whole label, only do it when the text changed.
             if (m_lastText != text) {
@@ -464,6 +469,12 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         (void)s_accum;
 #endif
 
+        // Low latency mode runs only while the gate allows it. The queue is bounded before the draw,
+        // so that wait belongs to this frame's measured time.
+        bool const syncRunning = cfg.enabled && cfg.lowLatency && s_syncOk && focused && totalFrames >= 300
+            && minimum::hardGpuSyncAvailable();
+        if (syncRunning) minimum::frameQueueWait();
+
         auto const drawStart = clock::now();
         CCDirector::drawScene();
         auto const drawEnd = clock::now();
@@ -496,8 +507,8 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
         }
         s_lastDrawn = drawStart;
 
-        // Low latency mode: let the GPU catch up before the next frame starts, so input is
-        // not stuck behind frames queued in the driver.
+        // Low latency mode: place the fence behind this frame. The queue is bounded before the
+        // next draw (see latency.cpp), so input is not stuck behind frames queued in the driver.
         {
             using minimum::LatencyState;
             LatencyState state = LatencyState::Off;
@@ -505,14 +516,15 @@ struct FrameGate : Modify<FrameGate, CCDirector> {
                 if (!minimum::hardGpuSyncAvailable()) {
                     state = LatencyState::Unavailable;
                 }
-                else if (s_syncOk && focused && totalFrames >= 300) {
+                else if (syncRunning) {
                     state = LatencyState::Active;
-                    minimum::hardGpuSync();
+                    minimum::frameQueueSubmit();
                 }
                 else {
                     state = LatencyState::Waiting;
                 }
             }
+            if (!syncRunning) minimum::frameQueueReset();
             counters.latencyState.store(static_cast<uint8_t>(state), std::memory_order_relaxed);
         }
 
